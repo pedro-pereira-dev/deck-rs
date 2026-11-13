@@ -4,4 +4,4 @@ name = "deck-rs"
 version = "0.1.0"
 
 [dependencies]
-iced = "0.14"
+iced = { features = ["fira-sans", "webgl"], version = "0.14" }
