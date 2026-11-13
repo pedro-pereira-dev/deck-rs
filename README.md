@@ -21,7 +21,9 @@ Nix flakes only see git-tracked files, so keep `flake.nix`, `flake.lock` and `ju
 | `just format` | Format Rust and Nix files                |
 | `just lint`   | Check formatting and run clippy          |
 | `just run`    | Run the app                              |
+| `just remote` | Sync to `REMOTE` and run it live there   |
 | `just test`   | Run tests                                |
+| `just watch`  | Rebuild and rerun the app on change      |
 
 Extra arguments are passed to cargo, e.g. `just test some_test`.
 

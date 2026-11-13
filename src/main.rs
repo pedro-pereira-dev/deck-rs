@@ -7,7 +7,12 @@ enum message {
 }
 
 fn main() -> iced::Result {
-    iced::run(update, view)
+    iced::application(|| (), update, view)
+        .window(iced::window::Settings {
+            fullscreen: true,
+            ..Default::default()
+        })
+        .run()
 }
 
 fn update(_: &mut (), message: message) -> iced::Task<message> {

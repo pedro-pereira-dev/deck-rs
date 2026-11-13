@@ -42,20 +42,26 @@
       });
       devShells = each (pkgs: {
         default = pkgs.mkShell {
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUSTFLAGS = "-C link-arg=-fuse-ld=mold";
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS = "-C link-arg=-fuse-ld=mold";
           LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath (runtimeLibraries pkgs);
           buildInputs = runtimeLibraries pkgs;
           packages = with pkgs; [
             cargo
             clippy
+            fswatch
             just
             lld
+            mold
             nixfmt
             pkg-config
+            rsync
             rust-analyzer
             rustc
             rustfmt
             trunk
             wasm-bindgen-cli
+            watchexec
           ];
         };
       });
