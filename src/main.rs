@@ -1,26 +1,20 @@
-use iced::widget::{button, center, column, text};
+#![allow(non_camel_case_types, non_upper_case_globals)]
 
-#[allow(non_camel_case_types)]
-#[derive(Clone, Debug)]
-enum message {
-    exit,
-}
+mod deck;
+mod input;
+mod items;
+mod status;
+mod sys;
+mod view;
 
 fn main() -> iced::Result {
-    iced::application(|| (), update, view)
-        .window(iced::window::Settings {
-            fullscreen: true,
-            ..Default::default()
-        })
-        .run()
-}
-
-fn update(_: &mut (), message: message) -> iced::Task<message> {
-    match message {
-        message::exit => iced::exit(),
+    let mut app = iced::application(deck::deck::new, deck::deck::update, view::view)
+        .style(|_, _| iced::theme::Style { background_color: view::background, text_color: view::foreground })
+        .subscription(deck::deck::subscription)
+        .title("deck")
+        .window(iced::window::Settings { fullscreen: true, ..Default::default() });
+    if let Some(bytes) = std::env::var("DECK_FONT").ok().and_then(|path| std::fs::read(path).ok()) {
+        app = app.default_font(iced::Font::with_name("MesloLGS Nerd Font")).font(bytes);
     }
-}
-
-fn view(_: &()) -> iced::Element<'_, message> {
-    center(column![text("hello world"), button("exit").on_press(message::exit)].spacing(10)).into()
+    app.run()
 }

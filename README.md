@@ -1,6 +1,45 @@
 # deck-rs
 
-Desktop app built with [iced](https://iced.rs).
+Fullscreen TV launcher built with [iced](https://iced.rs): app tiles, network, bluetooth, audio, display and
+power panels, system stats, kernel and NixOS generation. Controlled by keyboard, remote or gamepad; the cursor
+stays hidden until the mouse moves.
+
+## Controls
+
+| Action | Keyboard / remote                   | Gamepad              |
+| ------ | ----------------------------------- | -------------------- |
+| Move   | Arrows                              | D-pad, left stick    |
+| Select | Enter, Space, Select                | South (A / Cross)    |
+| Back   | Escape, Backspace, Back             | East (B / Circle)    |
+| Power  | Home, Menu, Power                   | Start, Guide         |
+
+In panels, left and right adjust volume, brightness and power profile.
+
+## Configuration
+
+Apps come from `$XDG_CONFIG_HOME/deck-rs/apps.toml`, defaulting to steam, jellyfin and grayjay:
+
+```toml
+[[app]]
+command = ["steam", "-gamepadui"]
+icon = "\U000F04D3"
+name = "steam"
+```
+
+Grayjay's default command launches `com.futo.platformplayer` through Waydroid. Install Grayjay in Waydroid first.
+
+`icon` is any MesloLGS Nerd Font glyph. `DECK_FONT` points to the font file and is set by the package and the
+development shell. System control uses `systemctl`, `loginctl`, `iwctl`, `ping`, `bluetoothctl`, `wpctl`,
+`brightnessctl` and `powerprofilesctl`, which the package adds to `PATH`.
+
+Wi-Fi uses iwd, enable it with `networking.wireless.iwd.enable = true;` and keep `/var/lib/iwd` persistent.
+Power actions fall back to `sudo -n systemctl`, so allow `systemctl poweroff|reboot|suspend` with
+`security.sudo.extraRules` when they are denied.
+The footer pings `DECK_PING` (default `9.9.9.9`).
+
+The footer checks for updates hourly: the running nixpkgs revision against `DECK_CHANNEL` (default
+`nixos-unstable`), and, when `DECK_UPDATES` is set to a git URL, its `HEAD` against the system
+configuration revision, which requires `system.configurationRevision = self.rev or self.dirtyRev;`.
 
 ## Requirements
 
@@ -40,7 +79,7 @@ PROFILE=release just run
 nix --extra-experimental-features "flakes nix-command" develop
 ```
 
-Provides the Rust toolchain, rust-analyzer, just, nixfmt and the runtime libraries iced needs.
+Provides the Rust toolchain, rust-analyzer, just, nixfmt, the runtime libraries iced needs and the system tools.
 
 Update dependencies with `nix flake update --extra-experimental-features "flakes nix-command"`.
 
