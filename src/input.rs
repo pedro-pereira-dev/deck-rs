@@ -1,11 +1,10 @@
 use crate::deck::{message, nav};
 use iced::futures::SinkExt;
 use iced::keyboard::{self, Key, key::Named};
-use iced::{Event, event, mouse};
+use iced::{Event, event};
 
 pub fn keys(event: Event, _: event::Status, _: iced::window::Id) -> Option<message> {
     let key = match event {
-        Event::Mouse(mouse::Event::CursorMoved { position }) => return Some(message::moved(position)),
         Event::Keyboard(keyboard::Event::KeyPressed { key: Key::Named(key), .. }) => key,
         _ => return None,
     };

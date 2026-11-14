@@ -9,7 +9,8 @@
         "x86_64-linux"
       ];
       each = f: nixpkgs.lib.genAttrs systems (system: f nixpkgs.legacyPackages.${system});
-      runtimeLibraries =
+      defaults = builtins.fromTOML (builtins.readFile ./config.toml);
+      libraries =
         pkgs: with pkgs; [
           fontconfig
           libGL
@@ -22,26 +23,17 @@
           vulkan-loader
           wayland
         ];
-      font =
-        pkgs:
-        "${pkgs.nerd-fonts.meslo-lg}/share/fonts/truetype/NerdFonts/MesloLG/MesloLGSNerdFont-Regular.ttf";
-      tools =
-        pkgs: with pkgs; [
-          bluez
-          brightnessctl
-          curl
-          git
-          iproute2
-          iputils
-          iwd
-          power-profiles-daemon
-          systemd
-          wireplumber
-        ];
-    in
-    {
-      packages = each (pkgs: {
-        default = pkgs.rustPlatform.buildRustPackage {
+      mkPackage =
+        pkgs: settings:
+        let
+          configFile = (pkgs.formats.toml { }).generate "deck-rs-default.toml" settings;
+          fontFile = pkgs.runCommand "symbols-nerd-font-mono.ttf" { } ''
+            mkdir -p $out
+            cp ${pkgs.nerd-fonts.symbols-only}/share/fonts/truetype/NerdFonts/Symbols/SymbolsNerdFontMono-Regular.ttf \
+              $out/symbols.ttf
+          '';
+        in
+        pkgs.rustPlatform.buildRustPackage {
           pname = "deck-rs";
           version = (pkgs.lib.importTOML ./Cargo.toml).package.version;
           src = ./.;
@@ -50,39 +42,84 @@
             pkgs.makeWrapper
             pkgs.pkg-config
           ];
-          buildInputs = runtimeLibraries pkgs;
+          buildInputs = libraries pkgs;
+          passthru.settings = settings;
           postInstall = ''
             wrapProgram $out/bin/deck-rs \
-              --prefix LD_LIBRARY_PATH : ${pkgs.lib.makeLibraryPath (runtimeLibraries pkgs)} \
-              --suffix PATH : ${pkgs.lib.makeBinPath (tools pkgs)} \
-              --set-default DECK_FONT ${font pkgs}
+              --prefix LD_LIBRARY_PATH : ${pkgs.lib.makeLibraryPath (libraries pkgs)} \
+              --set-default DECK_DEFAULT_CONFIG ${configFile} \
+              --set-default DECK_FONT ${fontFile}/symbols.ttf
           '';
         };
+      module =
+        packages:
+        {
+          config,
+          lib,
+          pkgs,
+          ...
+        }:
+        let
+          cfg = config.programs.deck-rs;
+        in
+        {
+          options.programs.deck-rs = {
+            enable = lib.mkEnableOption "deck-rs";
+            package = lib.mkOption {
+              type = lib.types.package;
+              default = mkPackage pkgs (lib.recursiveUpdate defaults cfg.settings);
+            };
+            settings = lib.mkOption {
+              type = lib.types.attrsOf lib.types.anything;
+              default = { };
+            };
+          };
+          config = lib.mkIf cfg.enable (lib.setAttrByPath packages [ cfg.package ]);
+        };
+      overlay = final: prev: {
+        deck-rs = final.lib.makeOverridable (
+          settings: mkPackage final (final.lib.recursiveUpdate defaults settings)
+        ) { };
+      };
+    in
+    {
+      packages = each (pkgs: {
+        default = mkPackage pkgs defaults;
       });
+      overlays.default = overlay;
+      lib.settingsPackage = pkgs: settings: mkPackage pkgs (pkgs.lib.recursiveUpdate defaults settings);
+      nixosModules.default = module [
+        "environment"
+        "systemPackages"
+      ];
+      homeManagerModules.default = module [
+        "home"
+        "packages"
+      ];
       devShells = each (pkgs: {
         default = pkgs.mkShell {
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUSTFLAGS = "-C link-arg=-fuse-ld=mold";
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS = "-C link-arg=-fuse-ld=mold";
-          DECK_FONT = font pkgs;
-          LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath (runtimeLibraries pkgs);
-          buildInputs = runtimeLibraries pkgs;
-          packages =
-            with pkgs;
-            [
-              cargo
-              clippy
-              fswatch
-              just
-              mold
-              nixfmt
-              pkg-config
-              rsync
-              rust-analyzer
-              rustc
-              rustfmt
-              watchexec
-            ]
-            ++ tools pkgs;
+          LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath (libraries pkgs);
+          buildInputs = libraries pkgs;
+          packages = with pkgs; [
+            cargo
+            clippy
+            fswatch
+            grim
+            just
+            mold
+            nixfmt
+            pkg-config
+            rsync
+            rust-analyzer
+            rustc
+            rustfmt
+            sway
+            watchexec
+            wtype
+            nix
+          ];
         };
       });
       formatter = each (pkgs: pkgs.nixfmt);

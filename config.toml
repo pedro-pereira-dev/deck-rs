@@ -1,0 +1,39 @@
+[audio]
+backend = "auto"
+
+[bluetooth]
+backend = "auto"
+
+[brightness]
+backend = "auto"
+
+[network]
+backend = "auto"
+
+[power]
+backend = "auto"
+
+[profile]
+backend = "auto"
+
+[ui]
+font = ""
+font_family = "Symbols Nerd Font Mono"
+
+[[app]]
+command = ["steam", "-gamepadui"]
+env = {}
+icon = "\U000F04D3"
+name = "steam"
+
+[[app]]
+command = ["jellyfin-desktop"]
+env = {}
+icon = "\uF008"
+name = "jellyfin"
+
+[[app]]
+command = ["waydroid", "app", "launch", "com.futo.platformplayer"]
+env = {}
+icon = "\uF008"
+name = "grayjay"

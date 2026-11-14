@@ -7,9 +7,9 @@ version = "0.1.0"
 gilrs = "0.11"
 iced = { features = ["tokio"], version = "0.14" }
 serde = { features = ["derive"], version = "1" }
-sysinfo = "0.37"
-tokio = { features = ["macros", "fs", "process", "time"], version = "1" }
+tokio = { features = ["process", "time"], version = "1" }
 toml = "1"
+zbus = { features = ["tokio"], version = "5" }
 
 [profile.dev]
 debug = "line-tables-only"

@@ -1,9 +1,11 @@
-use crate::items::{bluetooth_glyph, item, items, network_glyph};
+use crate::config::{app, config};
+use crate::items::{item, items};
+use crate::modules::{audio, bluetooth, network, power};
 use crate::status::{query, status};
-use crate::sys::{self, app};
-use iced::{Point, Subscription, Task, event, time};
+use iced::{Font, Subscription, Task, event, time};
+use std::collections::HashSet;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 #[derive(Clone, Copy)]
 pub enum nav {
@@ -16,273 +18,205 @@ pub enum nav {
     up,
 }
 
-#[derive(Clone, Copy, Debug)]
-pub enum panel {
-    network,
-    bluetooth,
-    settings,
-    power,
-}
-
-impl panel {
-    pub const all: [panel; 4] = [panel::network, panel::bluetooth, panel::settings, panel::power];
-
-    pub fn glyph(self, status: &status) -> &'static str {
-        match self {
-            panel::bluetooth => bluetooth_glyph(status),
-            panel::network => network_glyph(status),
-            panel::power => "\u{f0425}",
-            panel::settings => "\u{f0493}",
-        }
-    }
+#[derive(Clone)]
+pub enum action {
+    audio(Vec<String>),
+    bluetooth(&'static str, String),
+    brightness(u32),
+    network(&'static str, String),
+    power(&'static str),
+    profile(String),
 }
 
 #[derive(Clone)]
 pub enum message {
-    device(usize),
-    done(Arc<status>, Option<String>),
+    device(Option<usize>),
+    done(Option<String>),
+    exited(usize),
     launch(usize),
-    moved(Point),
     nav(nav),
-    open(panel),
-    ping(Option<f32>),
-    press(usize, usize),
-    quit,
-    run(String, Vec<String>),
-    spin,
+    press(bool, usize),
+    run(String, action),
     status(Arc<status>),
     tick,
-    updates(String),
+}
+
+#[derive(Clone, Copy)]
+pub enum page {
+    app(usize),
+    bluetooth,
+    network,
+    power,
+    settings,
 }
 
 pub struct deck {
-    pub apps: Vec<app>,
     pub busy: Option<String>,
-    components: sysinfo::Components,
-    pub cpu: String,
-    pub cursor: bool,
-    device: Option<usize>,
-    pub disk: String,
-    disks: sysinfo::Disks,
-    pub error: Option<(String, Instant)>,
-    pub focus: (usize, usize),
-    pub index: usize,
-    pub info: String,
-    pub items: Vec<item>,
-    pub memory: String,
-    moved: Instant,
-    pub panel: Option<panel>,
-    pub ping: Option<f32>,
-    pointer: Option<Point>,
-    pub spinner: usize,
+    pub category: usize,
+    pub config: config,
+    pub device: Option<usize>,
+    pub error: Option<String>,
+    pub icon: Font,
+    pub inside: bool,
+    pub row: usize,
+    pub running: HashSet<usize>,
     pub status: Arc<status>,
-    system: sysinfo::System,
-    ticks: u64,
-    pub updates: String,
-}
-
-fn refresh() -> Task<message> {
-    Task::perform(query(), |status| message::status(status.into()))
 }
 
 impl deck {
-    pub fn new() -> (Self, Task<message>) {
-        let mut deck = deck {
-            apps: sys::apps(),
+    pub fn new(config: config, error: Option<String>) -> (Self, Task<message>) {
+        let icon = Font::with_name(Box::leak(config.ui.font_family.clone().into_boxed_str()));
+        let deck = deck {
             busy: None,
-            components: sysinfo::Components::new_with_refreshed_list(),
-            cpu: String::new(),
-            cursor: false,
+            category: 0,
+            config,
             device: None,
-            disk: String::new(),
-            disks: sysinfo::Disks::new_with_refreshed_list(),
-            error: None,
-            focus: (0, 0),
-            index: 0,
-            info: sys::info(),
-            items: Vec::new(),
-            memory: String::new(),
-            moved: Instant::now(),
-            panel: None,
-            ping: None,
-            pointer: None,
-            spinner: 0,
+            error,
+            icon,
+            inside: false,
+            row: 0,
+            running: HashSet::new(),
             status: Arc::default(),
-            system: sysinfo::System::new(),
-            ticks: 0,
-            updates: String::new(),
         };
-        deck.stats();
-        let ping = Task::perform(sys::ping(), message::ping);
-        (deck, Task::batch([refresh(), ping, Task::perform(sys::updates(), message::updates)]))
+        let task = deck.refresh();
+        (deck, task)
     }
 
-    fn rebuild(&mut self) {
-        self.items = self.panel.map(|panel| items(panel, &self.status, self.device)).unwrap_or_default();
-        self.index = self.index.min(self.items.len().saturating_sub(1));
+    pub fn items(&self) -> Vec<item> {
+        items(self, self.pages()[self.category])
     }
 
-    fn show(&mut self, panel: Option<panel>, device: Option<usize>) {
-        (self.device, self.index, self.panel) = (device, 0, panel);
-        self.rebuild();
+    pub fn pages(&self) -> Vec<page> {
+        let system = [page::network, page::bluetooth, page::settings, page::power];
+        (0..self.config.app.len()).map(page::app).chain(system).collect()
+    }
+
+    pub fn subscription(&self) -> Subscription<message> {
+        Subscription::batch([
+            event::listen_with(crate::input::keys),
+            time::every(Duration::from_secs(5)).map(|_| message::tick),
+            Subscription::run(crate::input::gamepad),
+        ])
     }
 
     pub fn update(&mut self, message: message) -> Task<message> {
         match message {
-            message::device(index) => self.show(self.panel, Some(index)),
-            message::done(status, error) => {
-                let busy = self.busy.take();
-                self.error = error.zip(busy).map(|(error, label)| (format!("{label} failed: {error}"), Instant::now()));
-                self.device = None;
-                return self.update(message::status(status));
+            message::device(device) => (self.device, self.row) = (device, 0),
+            message::done(error) => {
+                let label = self.busy.take().unwrap_or_default();
+                self.error = error.map(|error| format!("{label} failed: {error}"));
+                return self.refresh();
             }
+            message::exited(index) => drop(self.running.remove(&index)),
             message::launch(index) => {
-                if let Some(app) = self.apps.get(index) {
-                    return Task::future(sys::launch(app.command.clone())).discard();
+                if let Some(app) = self.config.app.get(index).cloned()
+                    && self.running.insert(index)
+                {
+                    return Task::perform(launch(app), move |_| message::exited(index));
                 }
-            }
-            message::moved(point) => {
-                if self.pointer.is_some_and(|last| last != point) {
-                    (self.cursor, self.moved) = (true, Instant::now());
-                }
-                self.pointer = Some(point);
             }
             message::nav(nav) => return self.navigate(nav),
-            message::open(panel) => {
-                self.show(Some(panel), None);
-                return refresh();
-            }
-            message::ping(ping) => self.ping = ping,
-            message::press(row, column) => {
-                match self.panel {
-                    Some(_) => self.index = column,
-                    None => self.focus = (row, column),
-                }
+            message::press(true, row) => {
+                (self.inside, self.row) = (true, row);
                 return self.navigate(nav::select);
             }
-            message::quit => return Task::future(sys::logout()).discard().chain(iced::exit()),
-            message::run(label, args) if self.busy.is_none() => {
-                self.busy = Some(label);
-                return Task::perform(
-                    async move {
-                        let error = sys::failure(45, &args).await;
-                        (query().await, error)
-                    },
-                    |(status, error)| message::done(status.into(), error),
-                );
+            message::press(false, category) => self.focus(category),
+            message::run(label, action) if self.busy.is_none() => {
+                (self.busy, self.error) = (Some(label), None);
+                return Task::perform(dispatch(action), |result| message::done(result.err()));
             }
             message::run(..) => {}
-            message::spin => self.spinner += 1,
             message::status(status) => {
                 self.status = status;
-                self.rebuild();
+                self.row = self.row.min(self.items().len().saturating_sub(1));
             }
-            message::tick => {
-                self.ticks += 1;
-                if self.cursor && self.moved.elapsed() > Duration::from_secs(3) {
-                    self.cursor = false;
-                }
-                self.stats();
-                let mut tasks = Vec::new();
-                if self.ticks.is_multiple_of(3600) {
-                    tasks.push(Task::perform(sys::updates(), message::updates));
-                }
-                if self.ticks.is_multiple_of(60) {
-                    tasks.push(Task::perform(sys::ping(), message::ping));
-                }
-                if self.ticks.is_multiple_of(5) {
-                    tasks.push(refresh());
-                }
-                return Task::batch(tasks);
-            }
-            message::updates(updates) => self.updates = updates,
+            message::tick => return self.refresh(),
         }
         Task::none()
+    }
+
+    fn focus(&mut self, category: usize) {
+        self.category = category.min(self.pages().len() - 1);
+        (self.device, self.inside, self.row) = (None, false, 0);
     }
 
     fn navigate(&mut self, nav: nav) -> Task<message> {
-        if self.panel.is_some() {
-            let last = self.items.len().saturating_sub(1);
-            let action = match nav {
-                nav::back | nav::menu => {
-                    match self.device {
-                        Some(_) => self.show(self.panel, None),
-                        None => self.show(None, None),
-                    }
-                    None
-                }
-                nav::down => {
-                    self.index = (self.index + 1).min(last);
-                    None
-                }
-                nav::left => self.items.get(self.index).and_then(|item| item.left.clone()),
-                nav::right => self.items.get(self.index).and_then(|item| item.right.clone()),
-                nav::select => self.items.get(self.index).and_then(|item| item.select.clone()),
-                nav::up => {
-                    self.index = self.index.saturating_sub(1);
-                    None
-                }
-            };
-            return action.map_or_else(Task::none, |message| self.update(message));
-        }
-        let lengths = [self.apps.len(), panel::all.len()];
-        let (mut row, mut column) = self.focus;
-        match nav {
-            nav::back => {}
-            nav::down => row = 1,
-            nav::left => column = column.saturating_sub(1),
-            nav::menu => return self.update(message::open(panel::power)),
-            nav::right => column += 1,
-            nav::select if row == 0 => return self.update(message::launch(column)),
-            nav::select => return panel::all.get(column).map_or_else(Task::none, |&p| self.update(message::open(p))),
-            nav::up => row = 0,
-        }
-        if lengths[row] == 0 {
-            row = 1 - row;
-        }
-        self.focus = (row, column.min(lengths[row].saturating_sub(1)));
-        Task::none()
-    }
-
-    fn stats(&mut self) {
-        let gib = |bytes: u64| bytes as f64 / 1024f64.powi(3);
-        if self.ticks.is_multiple_of(5) {
-            self.system.refresh_cpu_usage();
-            self.components.refresh(false);
-            let names = ["package", "tctl", "k10temp", "coretemp", "cpu", "soc"];
-            let temperature = self
-                .components
-                .iter()
-                .filter_map(|component| Some((component.label().to_lowercase(), component.temperature()?)))
-                .filter(|(_, value)| *value > 0.0)
-                .min_by_key(|(label, _)| names.iter().position(|name| label.contains(name)).unwrap_or(names.len()))
-                .map(|(_, value)| format!(" {value:.0}°C"))
-                .unwrap_or_default();
-            self.cpu = format!("cpu {:.0}%{temperature}", self.system.global_cpu_usage());
-        }
-        if self.ticks.is_multiple_of(20) {
-            self.system.refresh_memory();
-            let (used, total) = (self.system.used_memory(), self.system.total_memory());
-            self.memory = format!("mem {:.1}/{:.1} GiB", gib(used), gib(total));
-        }
-        if self.ticks.is_multiple_of(30) {
-            self.disks.refresh(false);
-            let root = self.disks.iter().find(|disk| disk.mount_point() == std::path::Path::new("/"));
-            let used = root.map_or(0, |disk| 100 - disk.available_space() * 100 / disk.total_space().max(1));
-            self.disk = format!("disk {used}%");
-        }
-    }
-
-    pub fn subscription(&self) -> Subscription<message> {
-        let spin = match self.busy {
-            Some(_) => time::every(Duration::from_millis(120)).map(|_| message::spin),
-            None => Subscription::none(),
+        let items = self.items();
+        let item = items.get(self.row);
+        let message = match (self.inside, nav) {
+            (_, nav::menu) => {
+                self.focus(usize::MAX);
+                None
+            }
+            (false, nav::down) => {
+                self.focus(self.category + 1);
+                None
+            }
+            (false, nav::up) => {
+                self.focus(self.category.saturating_sub(1));
+                None
+            }
+            (false, nav::select) if matches!(self.pages()[self.category], page::app(_)) => {
+                items.first().and_then(|item| item.select.clone())
+            }
+            (false, nav::right | nav::select) => {
+                self.inside = !items.is_empty();
+                None
+            }
+            (true, nav::down) => {
+                self.row = (self.row + 1).min(items.len().saturating_sub(1));
+                None
+            }
+            (true, nav::up) => {
+                self.row = self.row.saturating_sub(1);
+                None
+            }
+            (true, nav::left) if item.is_some_and(|item| item.left.is_some()) => {
+                item.and_then(|item| item.left.clone())
+            }
+            (true, nav::right) => item.and_then(|item| item.right.clone()),
+            (true, nav::select) => item.and_then(|item| item.select.clone()),
+            (true, nav::back) if self.device.is_some() => Some(message::device(None)),
+            (true, nav::back | nav::left) => {
+                self.inside = false;
+                None
+            }
+            _ => None,
         };
-        Subscription::batch([
-            spin,
-            event::listen_with(crate::input::keys),
-            time::every(Duration::from_secs(1)).map(|_| message::tick),
-            Subscription::run(crate::input::gamepad),
-        ])
+        message.map_or_else(Task::none, |message| self.update(message))
+    }
+
+    fn refresh(&self) -> Task<message> {
+        Task::perform(query(self.config.clone()), |status| message::status(status.into()))
+    }
+}
+
+async fn dispatch(action: action) -> Result<(), String> {
+    match action {
+        action::audio(args) => audio::run(args).await,
+        action::bluetooth(method, path) => bluetooth::action(method, path).await,
+        action::brightness(level) => power::set_brightness(level).await,
+        action::network(method, path) => network::action(method, path).await,
+        action::power(method) => power::action(method).await,
+        action::profile(profile) => power::set_profile(profile).await,
+    }
+}
+
+async fn launch(app: app) {
+    let Some((program, args)) = app.command.split_first() else { return };
+    let mut command = tokio::process::Command::new(program);
+    command.args(args);
+    if std::env::var_os("WAYLAND_DISPLAY").is_some() {
+        command.envs([
+            ("ELECTRON_OZONE_PLATFORM_HINT", "wayland"),
+            ("GDK_BACKEND", "wayland,x11"),
+            ("NIXOS_OZONE_WL", "1"),
+            ("QT_QPA_PLATFORM", "wayland;xcb"),
+            ("SDL_VIDEODRIVER", "wayland,x11"),
+            ("XDG_SESSION_TYPE", "wayland"),
+        ]);
+    }
+    if let Ok(mut child) = command.envs(&app.env).spawn() {
+        let _ = child.wait().await;
     }
 }

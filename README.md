@@ -1,70 +1,88 @@
 # deck-rs
 
-Fullscreen TV launcher built with [iced](https://iced.rs): app tiles, network, bluetooth, audio, display and
-power panels, system stats, kernel and NixOS generation. Controlled by keyboard, remote or gamepad; the cursor
-stays hidden until the mouse moves.
+Fullscreen TV launcher built with [iced](https://iced.rs), laid out like the PlayStation 4 settings screen and
+Windows Media Center: a vertical menu of apps, network, bluetooth, settings and power on the left, and the
+focused entry's options on the right. Controlled by keyboard, remote or gamepad.
 
 ## Controls
 
-| Action | Keyboard / remote                   | Gamepad              |
-| ------ | ----------------------------------- | -------------------- |
-| Move   | Arrows                              | D-pad, left stick    |
-| Select | Enter, Space, Select                | South (A / Cross)    |
-| Back   | Escape, Backspace, Back             | East (B / Circle)    |
-| Power  | Home, Menu, Power                   | Start, Guide         |
+| Action | Keyboard / remote       | Gamepad           |
+| ------ | ----------------------- | ----------------- |
+| Move   | Arrows                  | D-pad, left stick |
+| Select | Enter, Space, Select    | South (A / Cross) |
+| Back   | Escape, Backspace, Back | East (B / Circle) |
+| Power  | Home, Menu, Power       | Start, Guide      |
 
-In panels, left and right adjust volume, brightness and power profile.
+Right or select enters the options pane; left or back returns to the menu. Select on an app launches it. In
+the pane, left and right adjust volume, brightness and power profile.
 
 ## Configuration
 
-Apps come from `$XDG_CONFIG_HOME/deck-rs/apps.toml`, defaulting to steam, jellyfin and grayjay:
+Defaults live in `config.toml` and are embedded in the binary. Settings are layered in this order, later
+files overriding earlier ones (tables merge, arrays replace):
+
+1. the embedded `config.toml`
+2. `DECK_DEFAULT_CONFIG`, set by the Nix package to its baked-in settings
+3. `DECK_CONFIG`, or `$XDG_CONFIG_HOME/deck-rs/config.toml` when unset
 
 ```toml
 [[app]]
 command = ["steam", "-gamepadui"]
+env = { GDK_BACKEND = "wayland,x11" }
 icon = "\U000F04D3"
 name = "steam"
+
+[network]
+backend = "iwd"
+
+[ui]
+font = "/path/to/your-font.ttf"
+font_family = "Symbols Nerd Font Mono"
 ```
 
-Grayjay's default command launches `com.futo.platformplayer` through Waydroid. Install Grayjay in Waydroid first.
+| Section        | Backends           |
+| -------------- | ------------------ |
+| `[audio]`      | `wpctl`, `pactl`   |
+| `[bluetooth]`  | `bluez`            |
+| `[brightness]` | `logind`           |
+| `[network]`    | `iwd`              |
+| `[power]`      | `logind`           |
+| `[profile]`    | `ppd`              |
 
-`icon` is any MesloLGS Nerd Font glyph. `DECK_FONT` points to the font file and is set by the package and the
-development shell. System control uses `systemctl`, `loginctl`, `iwctl`, `ping`, `bluetoothctl`, `wpctl`,
-`brightnessctl` and `powerprofilesctl`, which the package adds to `PATH`.
+`auto` selects a detected backend and `none` disables the module. A module only appears when its D-Bus
+service, executable or backlight device is present. For iwd, enable the service and persist `/var/lib/iwd`.
 
-Wi-Fi uses iwd, enable it with `networking.wireless.iwd.enable = true;` and keep `/var/lib/iwd` persistent.
-Power actions fall back to `sudo -n systemctl`, so allow `systemctl poweroff|reboot|suspend` with
-`security.sudo.extraRules` when they are denied.
-The footer pings `DECK_PING` (default `9.9.9.9`).
+The Symbols Nerd Font Mono icon font is embedded in Cargo builds; Nix packages pass it through `DECK_FONT`.
+Set `[ui].font` to a replacement font file and `[ui].font_family` to its family name. The clock uses `date`.
 
-The footer checks for updates hourly: the running nixpkgs revision against `DECK_CHANNEL` (default
-`nixos-unstable`), and, when `DECK_UPDATES` is set to a git URL, its `HEAD` against the system
-configuration revision, which requires `system.configurationRevision = self.rev or self.dirtyRev;`.
+The default apps are steam, jellyfin-desktop and Grayjay through Waydroid; install them on the host as needed.
 
 ## Requirements
 
-- [Nix](https://nixos.org/download); recipes enable flakes themselves.
+- [Rust](https://www.rust-lang.org/tools/install) and Cargo for a direct, non-flake build.
+- [Nix](https://nixos.org/download) for the package and development shell.
 - [just](https://just.systems), or use the one provided by the development shell.
 
-Recipes run through `nix develop` automatically, or directly when already inside the development shell.
-
-Nix flakes only see git-tracked files, so keep `flake.nix`, `flake.lock` and `justfile` tracked.
+Recipes run through `nix develop` automatically, or directly when already inside the development shell. Nix
+flakes only see git-tracked files, so keep `flake.nix`, `flake.lock`, `config.toml` and the font asset tracked.
 
 ## Usage
 
-| Command       | Description                              |
-| ------------- | ---------------------------------------- |
-| `just`        | List recipes                             |
-| `just build`  | Build the app                            |
-| `just check`  | Run lint and test                        |
-| `just format` | Format Rust and Nix files                |
-| `just lint`   | Check formatting and run clippy          |
-| `just run`    | Run the app                              |
-| `just remote` | Sync to `REMOTE` and run it live there   |
-| `just test`   | Run tests                                |
-| `just watch`  | Rebuild and rerun the app on change      |
+| Command       | Description                                              |
+| ------------- | -------------------------------------------------------- |
+| `just`        | List recipes                                             |
+| `just build`  | Build the app                                            |
+| `just check`  | Run lint and tests                                       |
+| `just format` | Format Rust and Nix files                                |
+| `just lint`   | Check formatting and run clippy                          |
+| `just remote` | Sync to `REMOTE=user@host` and run it on change          |
+| `just run`    | Run the app                                              |
+| `just shot`   | Screenshot headlessly, e.g. `just shot power Home Right` |
+| `just test`   | Run tests                                                |
+| `just watch`  | Rebuild and rerun the app on change                      |
 
-Extra arguments are passed to cargo, e.g. `just test some_test`.
+Extra arguments are passed to cargo, e.g. `just test config::tests`. Screenshots are written to
+`target/shots/`; `RESOLUTION` (default `3840x2160`) and `DELAY` (default `3`) tune `just shot`.
 
 The build profile defaults to `dev`; override it with `PROFILE`:
 
@@ -79,15 +97,14 @@ PROFILE=release just run
 nix --extra-experimental-features "flakes nix-command" develop
 ```
 
-Provides the Rust toolchain, rust-analyzer, just, nixfmt, the runtime libraries iced needs and the system tools.
+Provides the Rust toolchain, rust-analyzer, just, nixfmt, Nix and the runtime libraries iced needs.
 
 Update dependencies with `nix flake update --extra-experimental-features "flakes nix-command"`.
 
 ## Install on NixOS
 
-The flake exports the application as `packages.<system>.default` for `x86_64-linux` and
-`aarch64-linux`. Add it as an input to the flake that manages your NixOS configuration, replacing
-`<owner>` with the GitHub account or organization that hosts this repository:
+The flake exports `packages.<system>.default`, `nixosModules.default` and `homeManagerModules.default`. Set
+`programs.deck-rs.settings` to override the defaults. Replace `<owner>` with the account hosting this repository:
 
 ```nix
 {
@@ -101,17 +118,19 @@ The flake exports the application as `packages.<system>.default` for `x86_64-lin
     nixosConfigurations.my-host = nixpkgs.lib.nixosSystem {
       system = "x86_64-linux";
       modules = [
-        ({ pkgs, ... }: {
-          environment.systemPackages = [
-            deck-rs.packages.${pkgs.system}.default
-          ];
-        })
+        deck-rs.nixosModules.default
+        {
+          programs.deck-rs = {
+            enable = true;
+            settings.network.backend = "iwd";
+          };
+        }
       ];
     };
   };
 }
 ```
 
-Replace `my-host` with your NixOS configuration name, then rebuild with
-`sudo nixos-rebuild switch --flake .#my-host`. The `deck-rs` executable will be available on your
-system path. For a local checkout, use `deck-rs.url = "path:/path/to/deck-rs";` instead.
+Rebuild with `sudo nixos-rebuild switch --flake .#my-host`. For a local checkout, use
+`deck-rs.url = "path:/path/to/deck-rs";`. Home Manager users add `deck-rs.homeManagerModules.default` and set
+the same options. For a standalone package with custom settings, use `deck-rs.lib.settingsPackage pkgs settings`.

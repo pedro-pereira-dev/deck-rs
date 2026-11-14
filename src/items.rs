@@ -1,5 +1,6 @@
-use crate::deck::{message, nav, panel};
-use crate::status::{link, state, status};
+use crate::deck::{action, deck, message, page};
+use crate::modules::bluetooth::state;
+use crate::status::{link, status};
 
 #[derive(Clone)]
 pub struct item {
@@ -15,20 +16,16 @@ pub fn entry(glyph: &str, label: &str, value: &str, select: Option<message>) -> 
     item { glyph: glyph.into(), label: label.into(), left: None, right: None, select, value: value.into() }
 }
 
-pub fn run(label: &str, args: &[&str]) -> Option<message> {
-    Some(message::run(label.into(), args.iter().map(|arg| arg.to_string()).collect()))
+fn run(label: &str, action: action) -> Option<message> {
+    Some(message::run(label.into(), action))
 }
 
-fn command(args: &[&str]) -> Option<message> {
-    run("working", args)
-}
-
-fn on(enabled: bool) -> &'static str {
-    if enabled { "on" } else { "off" }
+fn toggle(on: bool) -> (&'static str, &'static str) {
+    if on { ("on", "off") } else { ("off", "on") }
 }
 
 pub fn bluetooth_glyph(status: &status) -> &'static str {
-    if status.bluetooth { "\u{f00af}" } else { "\u{f00b2}" }
+    if status.bluetooth.as_ref().is_some_and(|bluetooth| bluetooth.powered) { "\u{f00af}" } else { "\u{f00b2}" }
 }
 
 pub fn network_glyph(status: &status) -> &'static str {
@@ -40,137 +37,129 @@ pub fn network_glyph(status: &status) -> &'static str {
 }
 
 pub fn volume_glyph(status: &status) -> &'static str {
-    if status.muted { "\u{f0581}" } else { "\u{f057e}" }
+    if status.audio.as_ref().is_some_and(|audio| audio.muted) { "\u{f0581}" } else { "\u{f057e}" }
 }
 
-pub fn items(panel: panel, status: &status, device: Option<usize>) -> Vec<item> {
-    match panel {
-        panel::bluetooth => bluetooth(status, device),
-        panel::network => network(status),
-        panel::power => power(),
-        panel::settings => settings(status),
+pub fn title(deck: &deck, page: page) -> (&str, &str) {
+    match page {
+        page::app(index) => (&deck.config.app[index].icon, &deck.config.app[index].name),
+        page::bluetooth => (bluetooth_glyph(&deck.status), "bluetooth"),
+        page::network => (network_glyph(&deck.status), "network"),
+        page::power => ("\u{f0425}", "power"),
+        page::settings => ("\u{f0493}", "settings"),
     }
 }
 
-fn agent(label: &str, steps: &str) -> Option<message> {
-    let script = format!(
-        "y() {{ for _ in $(seq $1); do echo yes; sleep 1; done; }}; {{ echo 'agent KeyboardDisplay'; \
-         echo default-agent; echo 'pairable on'; {steps}; echo quit; }} | bluetoothctl"
-    );
-    run(label, &["sh", "-c", &script])
+pub fn items(deck: &deck, page: page) -> Vec<item> {
+    let status = &deck.status;
+    match page {
+        page::app(index) => {
+            let state = if deck.running.contains(&index) { "running" } else { "" };
+            vec![entry("\u{f040a}", "launch", state, Some(message::launch(index)))]
+        }
+        page::bluetooth => bluetooth(status, deck.device),
+        page::network => network(status),
+        page::power if status.power => [
+            ("\u{f0425}", "power off", "PowerOff"),
+            ("\u{f0709}", "reboot", "Reboot"),
+            ("\u{f04b2}", "suspend", "Suspend"),
+            ("\u{f0343}", "exit session", "TerminateSession"),
+        ]
+        .map(|(glyph, label, method)| entry(glyph, label, "", run(label, action::power(method))))
+        .into(),
+        page::power => Vec::new(),
+        page::settings => settings(status),
+    }
 }
 
 fn bluetooth(status: &status, device: Option<usize>) -> Vec<item> {
-    if let Some(device) = device.and_then(|index| status.devices.get(index)) {
-        let (mac, name) = (&device.mac, &device.name);
-        let (label, steps) = match device.state {
-            state::connected => ("disconnect", format!("echo 'disconnect {mac}'; y 3")),
-            _ => ("connect", format!("echo 'trust {mac}'; echo 'connect {mac}'; y 8")),
-        };
+    let Some(bluetooth) = &status.bluetooth else { return Vec::new() };
+    if let Some(device) = device.and_then(|index| bluetooth.devices.get(index)) {
+        let (method, label) =
+            if device.state == state::connected { ("Disconnect", "disconnect") } else { ("Connect", "connect") };
+        let path = device.path.clone();
         return vec![
-            entry("\u{f00b1}", label, name, agent(&format!("{label}ing {name}"), &steps)),
-            entry("\u{f0a7a}", "forget", "", run(&format!("forgetting {name}"), &["bluetoothctl", "remove", mac])),
-            entry("\u{f0141}", "back", "", Some(message::nav(nav::back))),
+            entry("\u{f00b1}", label, &device.name, run(label, action::bluetooth(method, path.clone()))),
+            entry("\u{f0a7a}", "forget", "", run("forget", action::bluetooth("forget", path))),
+            entry("\u{f0141}", "back", "", Some(message::device(None))),
         ];
     }
-    let toggle = on(!status.bluetooth);
-    let scan = run("scanning", &["bluetoothctl", "--timeout", "8", "scan", "on"]);
+    let (value, next) = toggle(bluetooth.powered);
     let mut items = vec![
-        entry(bluetooth_glyph(status), "bluetooth", on(status.bluetooth), command(&["bluetoothctl", "power", toggle])),
-        entry("\u{f0349}", "scan", "", scan),
+        entry(
+            bluetooth_glyph(status),
+            "bluetooth",
+            value,
+            run("bluetooth", action::bluetooth(next, bluetooth.adapter.clone())),
+        ),
+        entry("\u{f0349}", "scan", "", run("scan", action::bluetooth("scan", bluetooth.adapter.clone()))),
     ];
-    items.extend(status.devices.iter().enumerate().map(|(index, device)| {
-        let (mac, name, state) = (&device.mac, &device.name, device.state);
-        let value = match device.battery {
-            Some(level) => format!("{state}  {} {level}%", if level < 20 { "\u{f0083}" } else { "\u{f0079}" }),
-            None => state.to_string(),
+    items.extend(bluetooth.devices.iter().enumerate().map(|(index, device)| {
+        let state = match device.state {
+            state::connected => "connected",
+            state::new => "",
+            state::paired => "paired",
         };
-        let glyph = if state == state::connected { "\u{f00b1}" } else { "\u{f00af}" };
-        let select = match state {
-            state::new => agent(
-                &format!("pairing {name}"),
-                &format!(
-                    "echo 'scan on'; y 6; echo 'pair {mac}'; y 12; echo 'trust {mac}'; \
-                     echo 'connect {mac}'; y 5; echo 'scan off'"
-                ),
-            ),
-            _ => Some(message::device(index)),
+        let value = device.battery.map_or(state.into(), |battery| format!("{state}  {battery}%"));
+        let select = match device.state {
+            state::new => run("pair", action::bluetooth("Pair", device.path.clone())),
+            _ => Some(message::device(Some(index))),
         };
-        entry(glyph, name, &value, select)
+        entry("\u{f00af}", &device.name, &value, select)
     }));
     items
 }
 
 fn network(status: &status) -> Vec<item> {
-    let (glyph, station) = (network_glyph(status), status.station.as_str());
-    let (label, value) = match status.link {
-        link::ethernet => ("ethernet", format!("{}  connected", status.interface)),
-        link::none => ("none", "not connected".into()),
-        link::wireless => ("wireless", format!("{}  connected", status.interface)),
+    let label = match status.link {
+        link::ethernet => "ethernet",
+        link::none => "not connected",
+        link::wireless => "wireless",
     };
-    let mut items = vec![entry(glyph, label, &value, None)];
-    if station.is_empty() {
-        return items;
-    }
-    let power = ["iwctl", "device", station, "set-property", "Powered", on(!status.wifi)];
-    items.push(entry("\u{f05a9}", "wi-fi", on(status.wifi), command(&power)));
-    items.push(entry("\u{f0349}", "scan", "", run("scanning", &["iwctl", "station", station, "scan"])));
-    items.extend(status.networks.iter().map(|network| match network.active {
-        true => entry("\u{f05a9}", &network.ssid, "connected", command(&["iwctl", "station", station, "disconnect"])),
-        false => entry(
-            "\u{f05a9}",
-            &network.ssid,
-            &"\u{f111}".repeat(network.signal),
-            command(&["iwctl", "station", station, "connect", &network.ssid]),
-        ),
+    let mut items = vec![entry(network_glyph(status), label, &status.interface, None)];
+    let Some(wifi) = &status.wifi else { return items };
+    let (value, next) = toggle(wifi.powered);
+    items.push(entry("\u{f05a9}", "wi-fi", value, run("wi-fi", action::network(next, wifi.path.clone()))));
+    items.push(entry("\u{f0349}", "scan", "", run("scan", action::network("Scan", wifi.path.clone()))));
+    items.extend(wifi.networks.iter().map(|network| {
+        let (value, select) = match network.active {
+            true => ("connected".into(), run("disconnect", action::network("Disconnect", wifi.path.clone()))),
+            false => {
+                ("\u{f111}".repeat(network.signal), run("connect", action::network("Connect", network.path.clone())))
+            }
+        };
+        entry("\u{f05a9}", &network.ssid, &value, select)
     }));
     items
 }
 
-fn power() -> Vec<item> {
-    let action = |glyph: &str, label: &str, action: &str| {
-        let script = format!(
-            "systemctl --no-ask-password {action} || \
-             /run/wrappers/bin/sudo -n /run/current-system/sw/bin/systemctl {action}"
-        );
-        entry(glyph, label, "", command(&["sh", "-c", &script]))
-    };
-    vec![
-        action("\u{f0425}", "power off", "poweroff"),
-        action("\u{f0709}", "reboot", "reboot"),
-        action("\u{f04b2}", "suspend", "suspend"),
-        entry("\u{f0343}", "exit session", "", Some(message::quit)),
-    ]
-}
-
 fn settings(status: &status) -> Vec<item> {
-    let sink = "@DEFAULT_AUDIO_SINK@";
-    let volume = if status.muted { "muted".into() } else { format!("{}%", status.volume) };
-    let profiles = ["power-saver", "balanced", "performance"];
-    let current = profiles.iter().position(|profile| *profile == status.profile).unwrap_or(1);
-    let profile = |step: usize| command(&["powerprofilesctl", "set", profiles[(current + step) % 3]]);
-    let mut items = vec![item {
-        left: command(&["wpctl", "set-volume", sink, "5%-"]),
-        right: command(&["wpctl", "set-volume", "-l", "1", sink, "5%+"]),
-        ..entry(volume_glyph(status), "volume", &volume, command(&["wpctl", "set-mute", sink, "toggle"]))
-    }];
-    if let Some(brightness) = status.brightness {
+    let mut items = Vec::new();
+    if let Some(audio) = &status.audio {
+        let value = if audio.muted { "muted".into() } else { format!("{}%", audio.volume) };
         items.push(item {
-            left: command(&["brightnessctl", "set", "10%-"]),
-            right: command(&["brightnessctl", "set", "+10%"]),
-            ..entry("\u{f00df}", "display brightness", &format!("{brightness}%"), None)
+            left: run("volume", action::audio(audio.volume(false))),
+            right: run("volume", action::audio(audio.volume(true))),
+            ..entry(volume_glyph(status), "volume", &value, run("mute", action::audio(audio.mute())))
+        });
+        items.extend(audio.sinks.iter().map(|sink| {
+            let value = if sink.default { "output" } else { "" };
+            entry("\u{f04c3}", &sink.name, value, run("output", action::audio(audio.select(&sink.id))))
+        }));
+    }
+    if let Some(profile) = &status.profile {
+        let profiles = ["power-saver", "balanced", "performance"];
+        let current = profiles.iter().position(|item| item == profile).unwrap_or(1);
+        let step = |offset: usize| run("profile", action::profile(profiles[(current + offset) % 3].to_owned()));
+        items.push(item { left: step(2), right: step(1), ..entry("\u{f04c5}", "power profile", profile, step(1)) });
+    }
+    if let Some(level) = status.brightness {
+        let step = |level: u32| run("brightness", action::brightness(level.min(100)));
+        items.push(item {
+            left: step(level.saturating_sub(10)),
+            right: step(level + 10),
+            ..entry("\u{f00df}", "brightness", &format!("{level}%"), None)
         });
     }
-    if !status.profile.is_empty() {
-        items.push(item {
-            left: profile(2),
-            right: profile(1),
-            ..entry("\u{f04c5}", "power profile", &status.profile, profile(1))
-        });
-    }
-    items.extend(status.sinks.iter().map(|sink| {
-        let value = if sink.default { "output" } else { "" };
-        entry("\u{f04c3}", &sink.name, value, command(&["wpctl", "set-default", &sink.id]))
-    }));
     items
 }
