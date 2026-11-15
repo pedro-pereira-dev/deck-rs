@@ -1,8 +1,8 @@
 # deck-rs
 
-Fullscreen TV launcher built with [iced](https://iced.rs), laid out like the PlayStation 4 settings screen and
-Windows Media Center: a vertical menu of apps, network, bluetooth, settings and power on the left, and the
-focused entry's options on the right. Controlled by keyboard, remote or gamepad.
+Fullscreen TV launcher built with [iced](https://iced.rs), laid out like the PlayStation 3 XrossMediaBar: a
+horizontal row of categories with the focused category's items listed vertically beneath it. Controlled by
+keyboard, remote, gamepad or mouse.
 
 ## Controls
 
@@ -13,8 +13,11 @@ focused entry's options on the right. Controlled by keyboard, remote or gamepad.
 | Back   | Escape, Backspace, Back | East (B / Circle) |
 | Power  | Home, Menu, Power       | Start, Guide      |
 
-Right or select enters the options pane; left or back returns to the menu. Select on an app launches it. In
-the pane, left and right adjust volume, brightness and power profile.
+Left and right switch categories, up and down move through items and select runs an item. Items with options
+open a submenu on the right, up to three levels deep (settings, bluetooth, device, action); back or left closes
+one level. Mouse clicks focus or run items, right click goes back and the wheel scrolls. Every move plays a
+navigation sound. The top right shows the time, date, cpu, temperature, memory, disk, ping, volume and the
+bluetooth state with connected devices.
 
 ## Configuration
 
@@ -27,6 +30,7 @@ files overriding earlier ones (tables merge, arrays replace):
 
 ```toml
 [[app]]
+category = "games"
 command = ["steam", "-gamepadui"]
 env = { GDK_BACKEND = "wayland,x11" }
 icon = "\U000F04D3"
@@ -36,9 +40,20 @@ name = "steam"
 backend = "iwd"
 
 [ui]
+background = "/path/to/wallpaper.png"
+favorites = ["steam"]
 font = "/path/to/your-font.ttf"
 font_family = "Symbols Nerd Font Mono"
+icons = { games = "\U000F0297" }
+modules = ["home", "favorites", "games", "settings", "power"]
+ping = "9.9.9.9"
+sound = "/path/to/nav.wav"
 ```
+
+`[ui].modules` enables categories and sets their order; favorites is focused at start. `home`, `favorites`,
+`settings` and `power` are built in; any other name lists the `[[app]]` entries with that `category`, using
+the glyph from `[ui].icons`. `favorites` names apps from any category and always ends with suspend. An empty
+`background` is black and an empty `sound` plays the embedded click through `pw-play` or `paplay`.
 
 | Section        | Backends           |
 | -------------- | ------------------ |
@@ -55,7 +70,7 @@ service, executable or backlight device is present. For iwd, enable the service 
 The Symbols Nerd Font Mono icon font is embedded in Cargo builds; Nix packages pass it through `DECK_FONT`.
 Set `[ui].font` to a replacement font file and `[ui].font_family` to its family name. The clock uses `date`.
 
-The default apps are steam, jellyfin-desktop and Grayjay through Waydroid; install them on the host as needed.
+No apps are configured by default.
 
 ## Requirements
 

@@ -11,6 +11,7 @@ pub struct sink {
 pub struct audio {
     pub muted: bool,
     pub sinks: Vec<sink>,
+    pub sources: Vec<sink>,
     pub tool: &'static str,
     pub volume: u32,
 }
@@ -23,18 +24,17 @@ impl audio {
         }
     }
 
-    pub fn select(&self, id: &str) -> Vec<String> {
+    pub fn select(&self, id: &str, input: bool) -> Vec<String> {
         match self.tool {
-            "pactl" => args(&["pactl", "set-default-sink", id]),
+            "pactl" => args(&["pactl", if input { "set-default-source" } else { "set-default-sink" }, id]),
             _ => args(&["wpctl", "set-default", id]),
         }
     }
 
-    pub fn volume(&self, up: bool) -> Vec<String> {
-        match (self.tool, up) {
-            ("pactl", up) => args(&["pactl", "set-sink-volume", "@DEFAULT_SINK@", if up { "+5%" } else { "-5%" }]),
-            (_, true) => args(&["wpctl", "set-volume", "-l", "1", "@DEFAULT_AUDIO_SINK@", "5%+"]),
-            (_, false) => args(&["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%-"]),
+    pub fn volume(&self, level: u32) -> Vec<String> {
+        match self.tool {
+            "pactl" => args(&["pactl", "set-sink-volume", "@DEFAULT_SINK@", &format!("{level}%")]),
+            _ => args(&["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", &format!("{level}%")]),
         }
     }
 }
@@ -43,10 +43,15 @@ pub async fn query(backend: &str) -> Option<audio> {
     let tool =
         ["wpctl", "pactl"].into_iter().find(|tool| (backend == "auto" || backend == *tool) && super::which(tool))?;
     Some(if tool == "pactl" {
-        let volume = output(tool, &["get-sink-volume", "@DEFAULT_SINK@"]).await;
+        let (volume, info) =
+            (output(tool, &["get-sink-volume", "@DEFAULT_SINK@"]).await, output(tool, &["info"]).await);
         audio {
             muted: output(tool, &["get-sink-mute", "@DEFAULT_SINK@"]).await.contains("yes"),
-            sinks: pactl_sinks(&output(tool, &["list", "short", "sinks"]).await, &output(tool, &["info"]).await),
+            sinks: pactl_sinks(&output(tool, &["list", "short", "sinks"]).await, &info, "Sink"),
+            sources: pactl_sinks(&output(tool, &["list", "short", "sources"]).await, &info, "Source")
+                .into_iter()
+                .filter(|source| !source.id.ends_with(".monitor"))
+                .collect(),
             tool,
             volume: volume
                 .split('/')
@@ -56,9 +61,11 @@ pub async fn query(backend: &str) -> Option<audio> {
         }
     } else {
         let volume = output(tool, &["get-volume", "@DEFAULT_AUDIO_SINK@"]).await;
+        let status = output(tool, &["status"]).await;
         audio {
             muted: volume.contains("MUTED"),
-            sinks: wpctl_sinks(&output(tool, &["status"]).await),
+            sinks: wpctl_sinks(&status, "Sinks:"),
+            sources: wpctl_sinks(&status, "Sources:"),
             tool,
             volume: volume
                 .split_whitespace()
@@ -84,17 +91,18 @@ async fn output(tool: &str, args: &[&str]) -> String {
     output.map(|output| String::from_utf8_lossy(&output.stdout).into_owned()).unwrap_or_default()
 }
 
-fn pactl_sinks(text: &str, info: &str) -> Vec<sink> {
-    let default = info.lines().find_map(|line| line.strip_prefix("Default Sink: ")).unwrap_or_default();
+fn pactl_sinks(text: &str, info: &str, kind: &str) -> Vec<sink> {
+    let prefix = format!("Default {kind}: ");
+    let default = info.lines().find_map(|line| line.strip_prefix(prefix.as_str())).unwrap_or_default();
     text.lines()
         .filter_map(|line| line.split_whitespace().nth(1))
         .map(|name| sink { default: name == default, id: name.into(), name: name.into() })
         .collect()
 }
 
-fn wpctl_sinks(text: &str) -> Vec<sink> {
+fn wpctl_sinks(text: &str, section: &str) -> Vec<sink> {
     text.lines()
-        .skip_while(|line| !line.contains("Sinks:"))
+        .skip_while(|line| !line.contains(section))
         .skip(1)
         .map(|line| line.trim_start_matches(|c: char| !c.is_ascii_alphanumeric() && c != '*'))
         .take_while(|line| !line.is_empty())
@@ -109,7 +117,7 @@ fn wpctl_sinks(text: &str) -> Vec<sink> {
 mod tests {
     #[test]
     fn parses_pactl_sinks() {
-        let sinks = super::pactl_sinks("42 alsa_output.pci-1\n43 usb_headset\n", "Default Sink: usb_headset\n");
+        let sinks = super::pactl_sinks("42 alsa_output.pci-1\n43 usb_headset\n", "Default Sink: usb_headset\n", "Sink");
         assert_eq!(sinks.len(), 2);
         assert_eq!(sinks[0].name, "alsa_output.pci-1");
         assert!(sinks[1].default);
@@ -117,7 +125,7 @@ mod tests {
 
     #[test]
     fn parses_wpctl_sinks() {
-        let sinks = super::wpctl_sinks("Audio\n ├─ Sinks:\n │  * 42. Speakers [vol: 0.50]\n");
+        let sinks = super::wpctl_sinks("Audio\n ├─ Sinks:\n │  * 42. Speakers [vol: 0.50]\n", "Sinks:");
         assert_eq!(sinks.len(), 1);
         assert!(sinks[0].default);
         assert_eq!(sinks[0].id, "42");

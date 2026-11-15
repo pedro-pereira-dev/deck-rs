@@ -4,6 +4,8 @@ use std::path::PathBuf;
 
 #[derive(Clone, Deserialize)]
 pub struct app {
+    #[serde(default)]
+    pub category: String,
     pub command: Vec<String>,
     #[serde(default)]
     pub env: BTreeMap<String, String>,
@@ -19,12 +21,20 @@ pub struct backend {
 
 #[derive(Clone, Deserialize)]
 pub struct ui {
+    pub background: String,
+    pub favorites: Vec<String>,
     pub font: String,
     pub font_family: String,
+    #[serde(default)]
+    pub icons: BTreeMap<String, String>,
+    pub modules: Vec<String>,
+    pub ping: String,
+    pub sound: String,
 }
 
 #[derive(Clone, Deserialize)]
 pub struct config {
+    #[serde(default)]
     pub app: Vec<app>,
     pub audio: backend,
     pub bluetooth: backend,
@@ -82,14 +92,16 @@ mod tests {
     fn overrides_merge_over_defaults() {
         let mut merged: toml::Value = toml::from_str(super::defaults).unwrap();
         let overlay = toml::toml! {
-            app = [{ name = "custom", command = ["custom"] }]
+            app = [{ category = "games", name = "custom", command = ["custom"] }]
             network.backend = "none"
+            ui.modules = ["games"]
         };
         super::merge(&mut merged, toml::Value::Table(overlay));
         let config: super::config = merged.try_into().unwrap();
         assert_eq!(config.app.len(), 1);
-        assert_eq!(config.app[0].name, "custom");
+        assert_eq!(config.app[0].category, "games");
         assert_eq!(config.network.backend, "none");
         assert_eq!(config.audio.backend, "auto");
+        assert_eq!(config.ui.modules.len(), 1);
     }
 }

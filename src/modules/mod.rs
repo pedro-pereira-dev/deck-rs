@@ -53,6 +53,6 @@ async fn set(service: &str, path: &str, interface: &str, name: &str, value: Valu
     call(service, path, "org.freedesktop.DBus.Properties", "Set", &(interface, name, value)).await
 }
 
-fn which(program: &str) -> bool {
+pub fn which(program: &str) -> bool {
     std::env::var_os("PATH").is_some_and(|path| std::env::split_paths(&path).any(|dir| dir.join(program).is_file()))
 }

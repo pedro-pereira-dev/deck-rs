@@ -1,11 +1,12 @@
 use crate::config::{app, config};
-use crate::items::{item, items};
+use crate::items::{check, item, items};
 use crate::modules::{audio, bluetooth, network, power};
 use crate::status::{query, status};
 use iced::{Font, Subscription, Task, event, time};
 use std::collections::HashSet;
+use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 #[derive(Clone, Copy)]
 pub enum nav {
@@ -30,82 +31,112 @@ pub enum action {
 
 #[derive(Clone)]
 pub enum message {
-    device(Option<usize>),
     done(Option<String>),
     exited(usize),
+    frame(Instant),
+    idle,
+    mouse,
     launch(usize),
     nav(nav),
-    press(bool, usize),
+    pick(usize, Vec<usize>),
     run(String, action),
     status(Arc<status>),
     tick,
-}
-
-#[derive(Clone, Copy)]
-pub enum page {
-    app(usize),
-    bluetooth,
-    network,
-    power,
-    settings,
 }
 
 pub struct deck {
     pub busy: Option<String>,
     pub category: usize,
     pub config: config,
-    pub device: Option<usize>,
     pub error: Option<String>,
     pub icon: Font,
-    pub inside: bool,
-    pub row: usize,
+    pub path: Vec<usize>,
+    pub rows: Vec<usize>,
     pub running: HashSet<usize>,
+    pub last: Option<Instant>,
+    pub moved: Option<Instant>,
+    pub shown: Vec<f32>,
+    pub sound: PathBuf,
     pub status: Arc<status>,
 }
 
 impl deck {
     pub fn new(config: config, error: Option<String>) -> (Self, Task<message>) {
         let icon = Font::with_name(Box::leak(config.ui.font_family.clone().into_boxed_str()));
+        let sound = match config.ui.sound.as_str() {
+            "" => {
+                let path = std::env::temp_dir().join("deck-rs-nav.wav");
+                let _ = std::fs::write(&path, include_bytes!("../assets/nav.wav"));
+                path
+            }
+            path => path.into(),
+        };
+        let rows = vec![0; config.ui.modules.len()];
         let deck = deck {
             busy: None,
-            category: 0,
+            category: favorites(&config),
             config,
-            device: None,
             error,
             icon,
-            inside: false,
-            row: 0,
+            last: None,
+            moved: None,
+            path: vec![0],
+            shown: Vec::new(),
+            rows,
             running: HashSet::new(),
+            sound,
             status: Arc::default(),
         };
         let task = deck.refresh();
         (deck, task)
     }
 
-    pub fn items(&self) -> Vec<item> {
-        items(self, self.pages()[self.category])
-    }
-
-    pub fn pages(&self) -> Vec<page> {
-        let system = [page::network, page::bluetooth, page::settings, page::power];
-        (0..self.config.app.len()).map(page::app).chain(system).collect()
+    pub fn columns(&self) -> Vec<Vec<item>> {
+        let page = self.config.ui.modules.get(self.category);
+        let mut columns = vec![page.map_or_else(Vec::new, |page| items(self, page))];
+        for &row in &self.path {
+            match columns.last().and_then(|items| items.get(row)) {
+                Some(item) if !item.sub.is_empty() => columns.push(item.sub.clone()),
+                _ => break,
+            }
+        }
+        columns.truncate(self.path.len());
+        columns
     }
 
     pub fn subscription(&self) -> Subscription<message> {
         Subscription::batch([
             event::listen_with(crate::input::keys),
             time::every(Duration::from_secs(5)).map(|_| message::tick),
+            match self.moved.is_some_and(|moved| moved.elapsed() < Duration::from_millis(4500)) {
+                true => time::every(Duration::from_millis(500)).map(|_| message::idle),
+                false => Subscription::none(),
+            },
+            if self.shown == self.target() {
+                Subscription::none()
+            } else {
+                time::every(Duration::from_millis(16)).map(|_| message::frame(Instant::now()))
+            },
             Subscription::run(crate::input::gamepad),
         ])
     }
 
     pub fn update(&mut self, message: message) -> Task<message> {
         match message {
-            message::device(device) => (self.device, self.row) = (device, 0),
             message::done(error) => {
                 let label = self.busy.take().unwrap_or_default();
                 self.error = error.map(|error| format!("{label} failed: {error}"));
                 return self.refresh();
+            }
+            message::frame(now) => {
+                let (target, elapsed) = (self.target(), self.last.map_or(0.016, |last| (now - last).as_secs_f32()));
+                let step = 1.0 - (-elapsed / 0.03).exp();
+                self.shown.truncate(target.len());
+                self.shown.extend_from_slice(&target[self.shown.len()..]);
+                for (shown, target) in self.shown.iter_mut().zip(target) {
+                    *shown = if (target - *shown).abs() < 0.002 { target } else { *shown + (target - *shown) * step };
+                }
+                self.last = Some(now);
             }
             message::exited(index) => drop(self.running.remove(&index)),
             message::launch(index) => {
@@ -116,79 +147,70 @@ impl deck {
                 }
             }
             message::nav(nav) => return self.navigate(nav),
-            message::press(true, row) => {
-                (self.inside, self.row) = (true, row);
-                return self.navigate(nav::select);
-            }
-            message::press(false, category) => self.focus(category),
+            message::pick(category, _) if category != self.category => return self.go(category, vec![]),
+            message::pick(_, path) if path == self.path => return self.navigate(nav::select),
+            message::pick(_, path) => return self.go(self.category, path),
             message::run(label, action) if self.busy.is_none() => {
                 (self.busy, self.error) = (Some(label), None);
                 return Task::perform(dispatch(action), |result| message::done(result.err()));
             }
             message::run(..) => {}
-            message::status(status) => {
-                self.status = status;
-                self.row = self.row.min(self.items().len().saturating_sub(1));
-            }
+            message::status(status) => self.status = status,
+            message::idle => {}
+            message::mouse => self.moved = Some(Instant::now()),
             message::tick => return self.refresh(),
         }
         Task::none()
     }
 
-    fn focus(&mut self, category: usize) {
-        self.category = category.min(self.pages().len() - 1);
-        (self.device, self.inside, self.row) = (None, false, 0);
+    pub fn target(&self) -> Vec<f32> {
+        let head = [self.category as f32, self.path.len() as f32 - 1.0];
+        head.into_iter().chain(self.path.iter().map(|row| *row as f32)).collect()
+    }
+
+    fn go(&mut self, category: usize, path: Vec<usize>) -> Task<message> {
+        let category = category.min(self.rows.len().saturating_sub(1));
+        let path = if category == self.category { path } else { vec![self.rows.get(category).copied().unwrap_or(0)] };
+        if (category, &path) == (self.category, &self.path) || path.is_empty() {
+            return Task::none();
+        }
+        (self.category, self.path, self.last) = (category, path, None);
+        self.rows[category] = self.path[0];
+        Task::future(play(self.sound.clone())).discard()
     }
 
     fn navigate(&mut self, nav: nav) -> Task<message> {
-        let items = self.items();
-        let item = items.get(self.row);
-        let message = match (self.inside, nav) {
-            (_, nav::menu) => {
-                self.focus(usize::MAX);
-                None
+        let columns = self.columns();
+        let mut path = self.path[..columns.len()].to_vec();
+        let (depth, items) = (path.len() - 1, columns.last().cloned().unwrap_or_default());
+        let row = path[depth].min(items.len().saturating_sub(1));
+        let item = items.get(row);
+        path[depth] = row;
+        let category = self.category;
+        match nav {
+            nav::back if depth > 0 => self.go(category, path[..depth].to_vec()),
+            nav::left => self.go(category.saturating_sub(1), vec![]),
+            nav::right => self.go(category + 1, vec![]),
+            nav::down => self.go(category, [&path[..depth], &[(row + 1).min(items.len().saturating_sub(1))]].concat()),
+            nav::menu => self.go(favorites(&self.config), vec![]),
+            nav::select if item.is_some_and(|item| !item.sub.is_empty()) => {
+                let sub = item.map_or(&[][..], |item| &item.sub);
+                let row = sub.iter().position(|item| item.value == check).unwrap_or(0);
+                self.go(category, [&path[..], &[row]].concat())
             }
-            (false, nav::down) => {
-                self.focus(self.category + 1);
-                None
-            }
-            (false, nav::up) => {
-                self.focus(self.category.saturating_sub(1));
-                None
-            }
-            (false, nav::select) if matches!(self.pages()[self.category], page::app(_)) => {
-                items.first().and_then(|item| item.select.clone())
-            }
-            (false, nav::right | nav::select) => {
-                self.inside = !items.is_empty();
-                None
-            }
-            (true, nav::down) => {
-                self.row = (self.row + 1).min(items.len().saturating_sub(1));
-                None
-            }
-            (true, nav::up) => {
-                self.row = self.row.saturating_sub(1);
-                None
-            }
-            (true, nav::left) if item.is_some_and(|item| item.left.is_some()) => {
-                item.and_then(|item| item.left.clone())
-            }
-            (true, nav::right) => item.and_then(|item| item.right.clone()),
-            (true, nav::select) => item.and_then(|item| item.select.clone()),
-            (true, nav::back) if self.device.is_some() => Some(message::device(None)),
-            (true, nav::back | nav::left) => {
-                self.inside = false;
-                None
-            }
-            _ => None,
-        };
-        message.map_or_else(Task::none, |message| self.update(message))
+            nav::select => item.and_then(|item| item.select.clone()).map_or(Task::none(), |m| self.update(m)),
+            nav::up => self.go(category, [&path[..depth], &[row.saturating_sub(1)]].concat()),
+            _ => Task::none(),
+        }
     }
 
     fn refresh(&self) -> Task<message> {
         Task::perform(query(self.config.clone()), |status| message::status(status.into()))
     }
+}
+
+fn favorites(config: &config) -> usize {
+    config.ui.modules.iter().position(|page| page == "favorites").unwrap_or(0)
 }
 
 async fn dispatch(action: action) -> Result<(), String> {
@@ -199,6 +221,13 @@ async fn dispatch(action: action) -> Result<(), String> {
         action::network(method, path) => network::action(method, path).await,
         action::power(method) => power::action(method).await,
         action::profile(profile) => power::set_profile(profile).await,
+    }
+}
+
+async fn play(sound: PathBuf) {
+    let player = ["pw-play", "paplay"].into_iter().find(|player| crate::modules::which(player));
+    if let Some(Ok(mut child)) = player.map(|player| tokio::process::Command::new(player).arg(sound).spawn()) {
+        let _ = child.wait().await;
     }
 }
 

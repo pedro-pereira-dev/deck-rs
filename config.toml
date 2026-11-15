@@ -17,23 +17,10 @@ backend = "auto"
 backend = "auto"
 
 [ui]
+background = ""
+favorites = []
 font = ""
 font_family = "Symbols Nerd Font Mono"
-
-[[app]]
-command = ["steam", "-gamepadui"]
-env = {}
-icon = "\U000F04D3"
-name = "steam"
-
-[[app]]
-command = ["jellyfin-desktop"]
-env = {}
-icon = "\uF008"
-name = "jellyfin"
-
-[[app]]
-command = ["waydroid", "app", "launch", "com.futo.platformplayer"]
-env = {}
-icon = "\uF008"
-name = "grayjay"
+modules = ["home", "favorites", "settings", "power"]
+ping = "9.9.9.9"
+sound = ""

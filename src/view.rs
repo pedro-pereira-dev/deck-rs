@@ -1,87 +1,219 @@
-use crate::deck::{deck, message};
-use crate::items::{bluetooth_glyph, network_glyph, title, volume_glyph};
-use iced::widget::{button, column, container, row, space, text};
-use iced::{Alignment, Border, Color, Element, Length};
+use crate::deck::{deck, message, nav};
+use crate::items::{bluetooth_glyph, check, network_glyph, title, volume_glyph};
+use iced::alignment::Vertical;
+use iced::mouse::{Button, ScrollDelta};
+use iced::widget::canvas::{self, Action, Event, Frame, Geometry, Text};
+use iced::widget::{image, stack, text::Alignment};
+use iced::{Color, ContentFit, Element, Font, Length, Point, Rectangle, Renderer, Size, Theme, mouse};
 
-pub const background: Color = Color::from_rgb8(0x10, 0x12, 0x18);
-const dim: Color = Color::from_rgb8(0x80, 0x84, 0x90);
-pub const foreground: Color = Color::from_rgb8(0xf0, 0xf0, 0xf4);
-const highlight: Color = Color::from_rgb8(0x2a, 0x30, 0x3c);
+pub const background: Color = Color::BLACK;
+const dim: Color = Color::from_rgba(1.0, 1.0, 1.0, 0.15);
+pub const foreground: Color = Color::WHITE;
+const muted: Color = Color::from_rgba(1.0, 1.0, 1.0, 0.6);
 
 pub fn view(deck: &deck) -> Element<'_, message> {
-    let status = &deck.status;
-    let notice = match (&deck.busy, &deck.error) {
-        (Some(busy), _) => format!("{busy}…"),
-        (None, Some(error)) => error.clone(),
-        _ => String::new(),
-    };
-    let icon = |glyph| text(glyph).font(deck.icon).size(24);
-    let mut indicators = row![icon(network_glyph(status)), icon(bluetooth_glyph(status))];
-    if let Some(audio) = &status.audio {
-        indicators = indicators.push(icon(volume_glyph(status))).push(text!("{}%", audio.volume).size(20));
+    let canvas = canvas::Canvas::new(deck).width(Length::Fill).height(Length::Fill);
+    match deck.config.ui.background.as_str() {
+        "" => canvas.into(),
+        path => {
+            stack![image(path).content_fit(ContentFit::Cover).width(Length::Fill).height(Length::Fill), canvas].into()
+        }
     }
-    let header = row![
-        text(notice).color(dim).size(20),
-        space::horizontal(),
-        indicators.spacing(20).align_y(Alignment::Center),
-        text(&status.clock).size(24),
-    ]
-    .align_y(Alignment::Center)
-    .spacing(32);
-    let pages = deck.pages();
-    let menu = column(pages.iter().enumerate().map(|(index, page)| {
-        let (glyph, label) = title(deck, *page);
-        let focused = index == deck.category;
-        let size = if focused { 44 } else { 28 };
-        let color = if focused && !deck.inside { foreground } else { dim };
-        let content = row![text(glyph).font(deck.icon).size(size).width(64), text(label).size(size)]
-            .align_y(Alignment::Center)
-            .spacing(16);
-        button(content).on_press(message::press(false, index)).padding([8, 0]).style(style(false, color)).into()
-    }));
-    let (glyph, label) = title(deck, pages[deck.category]);
-    let items = deck.items();
-    let empty = items.is_empty().then(|| text("unavailable").color(dim).size(20));
-    let rows = column(items.into_iter().enumerate().map(|(index, item)| {
-        let arrows = if item.left.is_some() { "\u{f0141}  \u{f0142}" } else { "" };
-        let content = row![
-            text(item.glyph).font(deck.icon).size(24).width(40),
-            text(item.label).size(22),
-            space::horizontal(),
-            text(item.value).color(dim).size(20),
-            text(arrows).font(deck.icon).color(dim).size(20),
-        ]
-        .align_y(Alignment::Center)
-        .spacing(16);
-        let focused = deck.inside && index == deck.row;
-        let color = if deck.inside { foreground } else { dim };
-        button(content)
-            .on_press(message::press(true, index))
-            .padding([16, 24])
-            .style(style(focused, color))
-            .width(Length::Fill)
-            .into()
-    }))
-    .push(empty)
-    .spacing(4);
-    let pane = column![
-        row![text(glyph).font(deck.icon).size(32), text(label).size(32)].align_y(Alignment::Center).spacing(16),
-        rows,
-    ]
-    .spacing(32);
-    let body = row![
-        container(menu).center_y(Length::Fill).width(Length::FillPortion(2)),
-        container(pane).center_y(Length::Fill).width(Length::FillPortion(3)),
-    ]
-    .spacing(96);
-    column![header, body].padding([56, 96]).spacing(32).into()
 }
 
-fn style(focused: bool, color: Color) -> impl Fn(&iced::Theme, button::Status) -> button::Style {
-    move |_, _| button::Style {
-        background: focused.then_some(highlight.into()),
-        border: Border::default().rounded(4),
-        text_color: color,
-        ..Default::default()
+fn column_x(unit: f32, width: f32, column: usize, depth: f32) -> f32 {
+    width / 2.0 - unit + (column as f32 - depth) * unit * 3.5
+}
+
+fn spot(unit: f32, column: usize, index: usize, selected: f32) -> (f32, f32) {
+    let offset = index as f32 - selected;
+    let (big, small) = if column > 0 { (0.35, 0.25) } else { (0.45, 0.3) };
+    let y = match offset {
+        _ if offset.abs() < 1.0 && (offset > 0.0 || column > 0) => 4.6 + offset * 0.75,
+        _ if offset > 0.0 || column > 0 => 4.6 + offset.signum() * 0.25 + offset * 0.5,
+        _ if offset > -1.0 => 4.6 + offset * 2.0,
+        _ => 2.6 + (offset + 1.0) * 0.5,
+    };
+    (unit * y, unit * (small + (big - small) * (1.0 - offset.abs()).max(0.0)))
+}
+
+fn measure(content: &str, size: f32) -> f32 {
+    use iced::advanced::text::{self, Paragraph as _};
+    let text = text::Text {
+        align_x: Alignment::Left,
+        align_y: Vertical::Top,
+        bounds: Size::INFINITE,
+        content,
+        font: Font::DEFAULT,
+        line_height: text::LineHeight::default(),
+        shaping: text::Shaping::default(),
+        size: size.into(),
+        wrapping: text::Wrapping::None,
+    };
+    <Renderer as text::Renderer>::Paragraph::with_text(text).min_width()
+}
+
+impl canvas::Program<message> for deck {
+    type State = ();
+
+    fn update(&self, _: &mut (), event: &Event, bounds: Rectangle, cursor: mouse::Cursor) -> Option<Action<message>> {
+        if let Event::Mouse(mouse::Event::CursorMoved { .. }) = event {
+            return Some(Action::publish(message::mouse));
+        }
+        let point = cursor.position_in(bounds)?;
+        let unit = bounds.height / 10.0;
+        let shown = if self.shown.len() < 2 { self.target() } else { self.shown.clone() };
+        let message = match event {
+            Event::Mouse(mouse::Event::ButtonPressed(Button::Left)) => {
+                let columns = self.columns();
+                let depth = columns.len() - 1;
+                let category = (0..self.config.ui.modules.len()).filter(|_| depth < 2).find(|index| {
+                    let x = column_x(unit, bounds.width, 0, shown[1]) + (*index as f32 - shown[0]) * unit * 1.4;
+                    (point.x - x).abs() < unit * 0.5 && (point.y - unit * 3.6).abs() < unit * 0.4
+                });
+                let row = columns.iter().enumerate().skip(depth.saturating_sub(1)).find_map(|(column, items)| {
+                    let x = column_x(unit, bounds.width, column, shown[1]);
+                    (0..items.len()).find_map(|index| {
+                        let (y, _) = spot(unit, column, index, shown.get(column + 2).copied().unwrap_or(0.0));
+                        let hit =
+                            point.x > x - unit * 0.5 && point.x < x + unit * 5.0 && (point.y - y).abs() < unit * 0.25;
+                        hit.then(|| [&self.path[..column], &[index]].concat())
+                    })
+                });
+                match (category, row) {
+                    (Some(category), _) => message::pick(category, Vec::new()),
+                    (_, Some(path)) => message::pick(self.category, path),
+                    _ => return None,
+                }
+            }
+            Event::Mouse(mouse::Event::ButtonPressed(Button::Right)) => message::nav(nav::back),
+            Event::Mouse(mouse::Event::WheelScrolled { delta }) => {
+                let (ScrollDelta::Lines { x, y } | ScrollDelta::Pixels { x, y }) = *delta;
+                message::nav(match (x.abs() > y.abs(), x > 0.0, y > 0.0) {
+                    (true, true, _) => nav::left,
+                    (true, false, _) => nav::right,
+                    (false, _, true) => nav::up,
+                    (false, _, false) => nav::down,
+                })
+            }
+            _ => return None,
+        };
+        Some(Action::publish(message).and_capture())
+    }
+
+    fn mouse_interaction(&self, _: &(), _: Rectangle, _: mouse::Cursor) -> mouse::Interaction {
+        let active = self.moved.is_some_and(|moved| moved.elapsed().as_secs_f32() < 4.0);
+        if active { mouse::Interaction::default() } else { mouse::Interaction::Hidden }
+    }
+
+    fn draw(&self, _: &(), renderer: &Renderer, _: &Theme, bounds: Rectangle, _: mouse::Cursor) -> Vec<Geometry> {
+        let mut frame = Frame::new(renderer, bounds.size());
+        let (width, unit) = (bounds.width, bounds.height / 10.0);
+        let (icon, label, status, right) = (self.icon, Font::DEFAULT, &self.status, width - unit * 0.6);
+        let mut put = |content: &str, at: (f32, f32), size: f32, color: Color, align: Alignment, font: Font| {
+            let max_width = if align == Alignment::Left { unit * 4.8 } else { f32::INFINITY };
+            let align_y = if align == Alignment::Left { Vertical::Top } else { Vertical::Center };
+            let (content, position, size) = (content.into(), Point::new(at.0, at.1), size.into());
+            frame.fill_text(Text {
+                align_x: align,
+                align_y,
+                color,
+                content,
+                font,
+                max_width,
+                position,
+                size,
+                ..Text::default()
+            });
+        };
+        let system = &status.system;
+        let temperature = system.temperature.map_or(String::new(), |value| format!("   \u{f050f} {value}°C"));
+        let stats = format!(
+            "\u{f0ee0} {}%{temperature}   \u{f035b} {}   \u{f02ca} {}   \u{f0453} {} ms",
+            system.cpu, system.memory, system.disk, system.ping
+        );
+        put(&status.time, (right, unit * 1.05), unit * 0.7, foreground, Alignment::Right, label);
+        put(&status.date, (right, unit * 1.6), unit * 0.18, muted, Alignment::Right, label);
+        put(&stats, (right, unit * 1.95), unit * 0.1, muted, Alignment::Right, icon);
+        let bar = unit * 1.2;
+        let glyphs = format!("{}   {}   {}", network_glyph(status), bluetooth_glyph(status), volume_glyph(status));
+        let x = if status.audio.is_some() { right - bar - unit * 0.12 } else { right };
+        put(&glyphs, (x, unit * 2.35), unit * 0.12, muted, Alignment::Right, icon);
+        let notice = self.busy.as_ref().map(|busy| format!("{busy}…")).or_else(|| self.error.clone());
+        put(
+            &notice.unwrap_or_default(),
+            (unit * 0.6, bounds.height - unit * 0.8),
+            unit * 0.2,
+            dim,
+            Alignment::Left,
+            label,
+        );
+        let columns = self.columns();
+        let depth = columns.len() - 1;
+        let page = self.config.ui.modules.get(self.category).map_or("", String::as_str);
+        put(page, (unit * 0.6, unit * 0.5), unit * 0.3, foreground, Alignment::Left, label);
+        let shown = if self.shown.len() < 2 { self.target() } else { self.shown.clone() };
+        for (index, page) in self.config.ui.modules.iter().enumerate().filter(|_| depth < 2) {
+            let x = column_x(unit, bounds.width, 0, shown[1]) + (index as f32 - shown[0]) * unit * 1.4;
+            let focused = index == self.category;
+            let color = if focused && depth == 0 {
+                foreground
+            } else if focused {
+                muted
+            } else {
+                dim
+            };
+            let size = unit * if focused { 0.6 } else { 0.5 };
+            put(title(self, page), (x, unit * 3.6), size, color, Alignment::Center, icon);
+        }
+        let mut put = |content: &str, at: (f32, f32), size: f32, color: Color, align: Alignment, font: Font| {
+            let max_width = if align == Alignment::Left { unit * 4.0 } else { f32::INFINITY };
+            let align_y = if align == Alignment::Left { Vertical::Top } else { Vertical::Center };
+            let (content, position, size) = (content.into(), Point::new(at.0, at.1), size.into());
+            frame.fill_text(Text {
+                align_x: align,
+                align_y,
+                color,
+                content,
+                font,
+                max_width,
+                position,
+                size,
+                ..Text::default()
+            });
+        };
+        let mut lines = Vec::new();
+        for (column, items) in columns.iter().enumerate().skip(depth.saturating_sub(1)) {
+            let (x, selected) =
+                (column_x(unit, bounds.width, column, shown[1]), self.path[column].min(items.len().saturating_sub(1)));
+            for (index, item) in items.iter().enumerate() {
+                let (y, size) = spot(unit, column, index, shown.get(column + 2).copied().unwrap_or(selected as f32));
+                let color = match (index == selected, column == depth) {
+                    (true, true) => foreground,
+                    (true, false) => muted,
+                    _ => dim,
+                };
+                let checked = item.value == check;
+                put(&item.glyph, (x, y), size, color, Alignment::Center, icon);
+                put(if checked { check } else { "" }, (x - unit * 0.5, y), unit * 0.18, color, Alignment::Center, icon);
+                put(&item.label, (x + unit * 0.5, y - size * 0.5), size * 0.5, color, Alignment::Left, label);
+                if index == selected && column == depth {
+                    lines.push((x + unit * 0.5, y + size * 0.08, measure(&item.label, size * 0.5).min(unit * 4.0)));
+                }
+                if !checked && index == selected {
+                    put(&item.value, (x + unit * 0.5, y + size * 0.15), size * 0.35, muted, Alignment::Left, label);
+                }
+            }
+        }
+        let level = status.audio.as_ref().map(|audio| if audio.muted { 0 } else { audio.volume.min(100) });
+        if let Some(level) = level {
+            frame.fill_rectangle(Point::new(right - bar, unit * 2.34), Size::new(bar, unit * 0.02), dim);
+            let size = Size::new(bar * level as f32 / 100.0, unit * 0.02);
+            frame.fill_rectangle(Point::new(right - bar, unit * 2.34), size, foreground);
+        }
+        for (x, y, width) in lines {
+            frame.fill_rectangle(Point::new(x, y), Size::new(width, unit * 0.015), foreground);
+        }
+        vec![frame.into_geometry()]
     }
 }
