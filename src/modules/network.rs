@@ -27,9 +27,9 @@ pub async fn query(backend: &str) -> Option<wifi> {
     }
     let objects = objects(service).await?;
     let (path, items) = objects.iter().find(|(_, items)| interface(items, device).is_some())?;
-    let connected =
-        interface(items, station).and_then(|properties| value::<OwnedObjectPath>(properties, "ConnectedNetwork"));
-    let ordered: Vec<(OwnedObjectPath, i16)> = match interface(items, station) {
+    let properties = interface(items, station);
+    let connected = properties.and_then(|properties| value::<OwnedObjectPath>(properties, "ConnectedNetwork"));
+    let ordered: Vec<(OwnedObjectPath, i16)> = match properties {
         Some(_) => call(service, path, station, "GetOrderedNetworks", &()).await.unwrap_or_default(),
         None => Vec::new(),
     };

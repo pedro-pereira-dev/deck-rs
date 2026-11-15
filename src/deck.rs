@@ -47,7 +47,7 @@ pub enum message {
 pub struct deck {
     pub busy: Option<String>,
     pub category: usize,
-    pub config: config,
+    pub config: Arc<config>,
     pub error: Option<String>,
     pub icon: Font,
     pub path: Vec<usize>,
@@ -75,7 +75,7 @@ impl deck {
         let deck = deck {
             busy: None,
             category: favorites(&config),
-            config,
+            config: config.into(),
             error,
             icon,
             last: None,
@@ -91,26 +91,33 @@ impl deck {
         (deck, task)
     }
 
-    pub fn columns(&self) -> Vec<Vec<item>> {
-        let page = self.config.ui.modules.get(self.category);
-        let mut columns = vec![page.map_or_else(Vec::new, |page| items(self, page))];
-        for &row in &self.path {
+    pub fn root(&self) -> Vec<item> {
+        self.config.ui.modules.get(self.category).map_or_else(Vec::new, |page| items(self, page))
+    }
+
+    pub fn columns<'a>(&self, root: &'a [item]) -> Vec<&'a [item]> {
+        let mut columns = vec![root];
+        for &row in &self.path[..self.path.len() - 1] {
             match columns.last().and_then(|items| items.get(row)) {
-                Some(item) if !item.sub.is_empty() => columns.push(item.sub.clone()),
+                Some(item) if !item.sub.is_empty() => columns.push(&item.sub),
                 _ => break,
             }
         }
-        columns.truncate(self.path.len());
         columns
+    }
+
+    pub fn shown(&self) -> Vec<f32> {
+        if self.shown.len() < 2 { self.target() } else { self.shown.clone() }
     }
 
     pub fn subscription(&self) -> Subscription<message> {
         Subscription::batch([
             event::listen_with(crate::input::keys),
             time::every(Duration::from_secs(5)).map(|_| message::tick),
-            match self.moved.is_some_and(|moved| moved.elapsed() < Duration::from_millis(4500)) {
-                true => time::every(Duration::from_millis(500)).map(|_| message::idle),
-                false => Subscription::none(),
+            if self.moved.is_some_and(|moved| moved.elapsed() < Duration::from_millis(4500)) {
+                time::every(Duration::from_millis(500)).map(|_| message::idle)
+            } else {
+                Subscription::none()
             },
             if self.shown == self.target() {
                 Subscription::none()
@@ -154,9 +161,8 @@ impl deck {
                 (self.busy, self.error) = (Some(label), None);
                 return Task::perform(dispatch(action), |result| message::done(result.err()));
             }
-            message::run(..) => {}
+            message::run(..) | message::idle => {}
             message::status(status) => self.status = status,
-            message::idle => {}
             message::mouse => self.moved = Some(Instant::now()),
             message::tick => return self.refresh(),
         }
@@ -180,9 +186,10 @@ impl deck {
     }
 
     fn navigate(&mut self, nav: nav) -> Task<message> {
-        let columns = self.columns();
+        let root = self.root();
+        let columns = self.columns(&root);
         let mut path = self.path[..columns.len()].to_vec();
-        let (depth, items) = (path.len() - 1, columns.last().cloned().unwrap_or_default());
+        let (depth, items) = (path.len() - 1, columns[columns.len() - 1]);
         let row = path[depth].min(items.len().saturating_sub(1));
         let item = items.get(row);
         path[depth] = row;

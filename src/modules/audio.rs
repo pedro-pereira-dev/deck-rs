@@ -1,3 +1,4 @@
+use super::output;
 use tokio::process::Command;
 
 #[derive(Clone)]
@@ -43,12 +44,17 @@ pub async fn query(backend: &str) -> Option<audio> {
     let tool =
         ["wpctl", "pactl"].into_iter().find(|tool| (backend == "auto" || backend == *tool) && super::which(tool))?;
     Some(if tool == "pactl" {
-        let (volume, info) =
-            (output(tool, &["get-sink-volume", "@DEFAULT_SINK@"]).await, output(tool, &["info"]).await);
+        let (volume, info, muted, sinks, sources) = iced::futures::join!(
+            output(tool, &["get-sink-volume", "@DEFAULT_SINK@"]),
+            output(tool, &["info"]),
+            output(tool, &["get-sink-mute", "@DEFAULT_SINK@"]),
+            output(tool, &["list", "short", "sinks"]),
+            output(tool, &["list", "short", "sources"]),
+        );
         audio {
-            muted: output(tool, &["get-sink-mute", "@DEFAULT_SINK@"]).await.contains("yes"),
-            sinks: pactl_sinks(&output(tool, &["list", "short", "sinks"]).await, &info, "Sink"),
-            sources: pactl_sinks(&output(tool, &["list", "short", "sources"]).await, &info, "Source")
+            muted: muted.contains("yes"),
+            sinks: pactl_sinks(&sinks, &info, "Sink"),
+            sources: pactl_sinks(&sources, &info, "Source")
                 .into_iter()
                 .filter(|source| !source.id.ends_with(".monitor"))
                 .collect(),
@@ -60,8 +66,8 @@ pub async fn query(backend: &str) -> Option<audio> {
                 .unwrap_or(0),
         }
     } else {
-        let volume = output(tool, &["get-volume", "@DEFAULT_AUDIO_SINK@"]).await;
-        let status = output(tool, &["status"]).await;
+        let (volume, status) =
+            iced::futures::join!(output(tool, &["get-volume", "@DEFAULT_AUDIO_SINK@"]), output(tool, &["status"]));
         audio {
             muted: volume.contains("MUTED"),
             sinks: wpctl_sinks(&status, "Sinks:"),
@@ -84,11 +90,6 @@ pub async fn run(args: Vec<String>) -> Result<(), String> {
 
 fn args(values: &[&str]) -> Vec<String> {
     values.iter().map(|value| value.to_string()).collect()
-}
-
-async fn output(tool: &str, args: &[&str]) -> String {
-    let output = Command::new(tool).args(args).output().await;
-    output.map(|output| String::from_utf8_lossy(&output.stdout).into_owned()).unwrap_or_default()
 }
 
 fn pactl_sinks(text: &str, info: &str, kind: &str) -> Vec<sink> {

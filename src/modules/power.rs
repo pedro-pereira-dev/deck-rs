@@ -46,7 +46,7 @@ pub async fn set_profile(profile: String) -> Result<(), String> {
 }
 
 fn backlight() -> Option<(String, u64, u64)> {
-    let entry = std::fs::read_dir("/sys/class/backlight").ok()?.flatten().next()?;
+    let entry = crate::status::entries("/sys/class/backlight").next()?;
     let read = |file| std::fs::read_to_string(entry.path().join(file)).ok()?.trim().parse().ok();
     Some((entry.file_name().to_string_lossy().into_owned(), read("brightness")?, read("max_brightness")?))
 }

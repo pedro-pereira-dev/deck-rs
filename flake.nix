@@ -27,11 +27,7 @@
         pkgs: settings:
         let
           configFile = (pkgs.formats.toml { }).generate "deck-rs-default.toml" settings;
-          fontFile = pkgs.runCommand "symbols-nerd-font-mono.ttf" { } ''
-            mkdir -p $out
-            cp ${pkgs.nerd-fonts.symbols-only}/share/fonts/truetype/NerdFonts/Symbols/SymbolsNerdFontMono-Regular.ttf \
-              $out/symbols.ttf
-          '';
+          fonts = "${pkgs.nerd-fonts.symbols-only}/share/fonts/truetype/NerdFonts/Symbols";
         in
         pkgs.rustPlatform.buildRustPackage {
           pname = "deck-rs";
@@ -48,9 +44,10 @@
             wrapProgram $out/bin/deck-rs \
               --prefix LD_LIBRARY_PATH : ${pkgs.lib.makeLibraryPath (libraries pkgs)} \
               --set-default DECK_DEFAULT_CONFIG ${configFile} \
-              --set-default DECK_FONT ${fontFile}/symbols.ttf
+              --set-default DECK_FONT ${fonts}/SymbolsNerdFontMono-Regular.ttf
           '';
         };
+      settingsPackage = pkgs: settings: mkPackage pkgs (pkgs.lib.recursiveUpdate defaults settings);
       module =
         packages:
         {
@@ -67,7 +64,7 @@
             enable = lib.mkEnableOption "deck-rs";
             package = lib.mkOption {
               type = lib.types.package;
-              default = mkPackage pkgs (lib.recursiveUpdate defaults cfg.settings);
+              default = settingsPackage pkgs cfg.settings;
             };
             settings = lib.mkOption {
               type = lib.types.attrsOf lib.types.anything;
@@ -77,9 +74,7 @@
           config = lib.mkIf cfg.enable (lib.setAttrByPath packages [ cfg.package ]);
         };
       overlay = final: prev: {
-        deck-rs = final.lib.makeOverridable (
-          settings: mkPackage final (final.lib.recursiveUpdate defaults settings)
-        ) { };
+        deck-rs = final.lib.makeOverridable (settingsPackage final) { };
       };
     in
     {
@@ -87,7 +82,7 @@
         default = mkPackage pkgs defaults;
       });
       overlays.default = overlay;
-      lib.settingsPackage = pkgs: settings: mkPackage pkgs (pkgs.lib.recursiveUpdate defaults settings);
+      lib.settingsPackage = settingsPackage;
       nixosModules.default = module [
         "environment"
         "systemPackages"
@@ -109,6 +104,7 @@
             grim
             just
             mold
+            nix
             nixfmt
             pkg-config
             rsync
@@ -118,7 +114,6 @@
             sway
             watchexec
             wtype
-            nix
           ];
         };
       });

@@ -1,7 +1,7 @@
 use crate::config::config;
 use crate::modules::{audio, bluetooth, network, power};
-use std::fs::read_to_string;
-use tokio::process::Command;
+use std::fs::{DirEntry, read_to_string};
+use std::sync::Arc;
 
 #[derive(Clone, Copy, Default, PartialEq)]
 pub enum link {
@@ -11,7 +11,7 @@ pub enum link {
     wireless,
 }
 
-#[derive(Clone, Default)]
+#[derive(Default)]
 pub struct system {
     pub address: String,
     pub cpu: u32,
@@ -25,7 +25,7 @@ pub struct system {
     pub uptime: String,
 }
 
-#[derive(Clone, Default)]
+#[derive(Default)]
 pub struct status {
     pub audio: Option<audio::audio>,
     pub bluetooth: Option<bluetooth::bluetooth>,
@@ -40,7 +40,7 @@ pub struct status {
     pub wifi: Option<network::wifi>,
 }
 
-pub async fn query(config: config) -> status {
+pub async fn query(config: Arc<config>) -> status {
     let (audio, bluetooth, brightness, clock, power, profile, wifi, system) = iced::futures::join!(
         audio::query(&config.audio.backend),
         bluetooth::query(&config.bluetooth.backend),
@@ -58,8 +58,11 @@ pub async fn query(config: config) -> status {
 }
 
 async fn output(program: &str, args: &[&str]) -> String {
-    let output = Command::new(program).args(args).output().await;
-    output.map(|output| String::from_utf8_lossy(&output.stdout).trim().to_owned()).unwrap_or_default()
+    crate::modules::output(program, args).await.trim().to_owned()
+}
+
+pub fn entries(path: &str) -> impl Iterator<Item = DirEntry> {
+    std::fs::read_dir(path).into_iter().flatten().flatten()
 }
 
 fn read(path: &str) -> String {
@@ -83,27 +86,19 @@ async fn system(host: &str) -> system {
     );
     let after = cpu();
     let total = after.1.saturating_sub(before.1).max(1);
-    let memory: Vec<u64> = ["MemTotal:", "MemAvailable:"]
-        .map(|key| {
-            let meminfo = read("/proc/meminfo");
-            let line = meminfo.lines().find(|line| line.starts_with(key)).unwrap_or_default().to_owned();
-            line.split_whitespace().nth(1).and_then(|value| value.parse().ok()).unwrap_or(0)
-        })
-        .into();
+    let meminfo = read("/proc/meminfo");
+    let memory = ["MemTotal:", "MemAvailable:"].map(|key| {
+        let line = meminfo.lines().find(|line| line.starts_with(key)).unwrap_or_default();
+        line.split_whitespace().nth(1).and_then(|value| value.parse::<u64>().ok()).unwrap_or(0)
+    });
     let gib = |kib: u64| kib as f64 / 1048576.0;
-    let mut displays: Vec<String> = std::fs::read_dir("/sys/class/drm")
-        .into_iter()
-        .flatten()
-        .flatten()
+    let mut displays: Vec<String> = entries("/sys/class/drm")
         .filter(|entry| read_to_string(entry.path().join("status")).is_ok_and(|status| status.trim() == "connected"))
         .filter_map(|entry| Some(entry.file_name().to_str()?.split_once('-')?.1.to_owned()))
         .collect();
     displays.sort();
     let seconds = read("/proc/uptime").split('.').next().and_then(|value| value.parse::<u64>().ok()).unwrap_or(0);
-    let temperature = std::fs::read_dir("/sys/class/thermal")
-        .into_iter()
-        .flatten()
-        .flatten()
+    let temperature = entries("/sys/class/thermal")
         .filter_map(|entry| read_to_string(entry.path().join("temp")).ok()?.trim().parse::<u32>().ok())
         .max()
         .map(|value| value / 1000);
@@ -120,11 +115,7 @@ async fn system(host: &str) -> system {
         host: read("/proc/sys/kernel/hostname"),
         kernel: read("/proc/sys/kernel/osrelease"),
         memory: format!("{:.1} / {:.1}G", gib(memory[0] - memory[1].min(memory[0])), gib(memory[0])),
-        ping: ping
-            .split("time=")
-            .nth(1)
-            .and_then(|time| time.split_whitespace().next())
-            .map_or("-".into(), |ms| ms.into()),
+        ping: ping.split("time=").nth(1).and_then(|time| time.split_whitespace().next()).unwrap_or("-").into(),
         temperature,
         uptime: format!("{}h {}m", seconds / 3600, seconds / 60 % 60),
     }
@@ -132,10 +123,7 @@ async fn system(host: &str) -> system {
 
 fn interfaces() -> (link, String) {
     let ignored = ["br", "docker", "lo", "tailscale", "tun", "veth", "virbr", "wg"];
-    std::fs::read_dir("/sys/class/net")
-        .into_iter()
-        .flatten()
-        .flatten()
+    entries("/sys/class/net")
         .map(|entry| (entry.path(), entry.file_name().to_string_lossy().into_owned()))
         .filter(|(_, name)| !ignored.iter().any(|prefix| name.starts_with(prefix)))
         .find(|(path, _)| read_to_string(path.join("operstate")).is_ok_and(|state| state.trim() == "up"))

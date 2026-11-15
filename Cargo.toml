@@ -7,7 +7,7 @@ version = "0.1.0"
 gilrs = "0.11"
 iced = { features = ["advanced", "canvas", "image", "tokio"], version = "0.14" }
 serde = { features = ["derive"], version = "1" }
-tokio = { features = ["process", "time"], version = "1" }
+tokio = { features = ["process", "sync", "time"], version = "1" }
 toml = "1"
 zbus = { features = ["tokio"], version = "5" }
 

@@ -53,6 +53,11 @@ async fn set(service: &str, path: &str, interface: &str, name: &str, value: Valu
     call(service, path, "org.freedesktop.DBus.Properties", "Set", &(interface, name, value)).await
 }
 
+pub async fn output(program: &str, args: &[&str]) -> String {
+    let output = tokio::process::Command::new(program).args(args).output().await;
+    output.map(|output| String::from_utf8_lossy(&output.stdout).into_owned()).unwrap_or_default()
+}
+
 pub fn which(program: &str) -> bool {
     std::env::var_os("PATH").is_some_and(|path| std::env::split_paths(&path).any(|dir| dir.join(program).is_file()))
 }

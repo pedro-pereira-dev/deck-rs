@@ -62,10 +62,11 @@ impl canvas::Program<message> for deck {
         }
         let point = cursor.position_in(bounds)?;
         let unit = bounds.height / 10.0;
-        let shown = if self.shown.len() < 2 { self.target() } else { self.shown.clone() };
+        let shown = self.shown();
         let message = match event {
             Event::Mouse(mouse::Event::ButtonPressed(Button::Left)) => {
-                let columns = self.columns();
+                let root = self.root();
+                let columns = self.columns(&root);
                 let depth = columns.len() - 1;
                 let category = (0..self.config.ui.modules.len()).filter(|_| depth < 2).find(|index| {
                     let x = column_x(unit, bounds.width, 0, shown[1]) + (*index as f32 - shown[0]) * unit * 1.4;
@@ -110,8 +111,9 @@ impl canvas::Program<message> for deck {
         let mut frame = Frame::new(renderer, bounds.size());
         let (width, unit) = (bounds.width, bounds.height / 10.0);
         let (icon, label, status, right) = (self.icon, Font::DEFAULT, &self.status, width - unit * 0.6);
+        let wide = std::cell::Cell::new(unit * 4.8);
         let mut put = |content: &str, at: (f32, f32), size: f32, color: Color, align: Alignment, font: Font| {
-            let max_width = if align == Alignment::Left { unit * 4.8 } else { f32::INFINITY };
+            let max_width = if align == Alignment::Left { wide.get() } else { f32::INFINITY };
             let align_y = if align == Alignment::Left { Vertical::Top } else { Vertical::Center };
             let (content, position, size) = (content.into(), Point::new(at.0, at.1), size.into());
             frame.fill_text(Text {
@@ -148,11 +150,12 @@ impl canvas::Program<message> for deck {
             Alignment::Left,
             label,
         );
-        let columns = self.columns();
+        let root = self.root();
+        let columns = self.columns(&root);
         let depth = columns.len() - 1;
         let page = self.config.ui.modules.get(self.category).map_or("", String::as_str);
         put(page, (unit * 0.6, unit * 0.5), unit * 0.3, foreground, Alignment::Left, label);
-        let shown = if self.shown.len() < 2 { self.target() } else { self.shown.clone() };
+        let shown = self.shown();
         for (index, page) in self.config.ui.modules.iter().enumerate().filter(|_| depth < 2) {
             let x = column_x(unit, bounds.width, 0, shown[1]) + (index as f32 - shown[0]) * unit * 1.4;
             let focused = index == self.category;
@@ -166,22 +169,7 @@ impl canvas::Program<message> for deck {
             let size = unit * if focused { 0.6 } else { 0.5 };
             put(title(self, page), (x, unit * 3.6), size, color, Alignment::Center, icon);
         }
-        let mut put = |content: &str, at: (f32, f32), size: f32, color: Color, align: Alignment, font: Font| {
-            let max_width = if align == Alignment::Left { unit * 4.0 } else { f32::INFINITY };
-            let align_y = if align == Alignment::Left { Vertical::Top } else { Vertical::Center };
-            let (content, position, size) = (content.into(), Point::new(at.0, at.1), size.into());
-            frame.fill_text(Text {
-                align_x: align,
-                align_y,
-                color,
-                content,
-                font,
-                max_width,
-                position,
-                size,
-                ..Text::default()
-            });
-        };
+        wide.set(unit * 4.0);
         let mut lines = Vec::new();
         for (column, items) in columns.iter().enumerate().skip(depth.saturating_sub(1)) {
             let (x, selected) =

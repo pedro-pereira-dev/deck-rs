@@ -4,10 +4,7 @@ use iced::keyboard::{self, Key, key::Named};
 use iced::{Event, event};
 
 pub fn keys(event: Event, _: event::Status, _: iced::window::Id) -> Option<message> {
-    let key = match event {
-        Event::Keyboard(keyboard::Event::KeyPressed { key: Key::Named(key), .. }) => key,
-        _ => return None,
-    };
+    let Event::Keyboard(keyboard::Event::KeyPressed { key: Key::Named(key), .. }) = event else { return None };
     Some(message::nav(match key {
         Named::ArrowDown => nav::down,
         Named::ArrowLeft => nav::left,

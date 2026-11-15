@@ -29,6 +29,19 @@ fn choice(glyph: &str, label: &str, current: bool, select: Option<message>) -> i
     entry(glyph, label, if current { check } else { "" }, select)
 }
 
+fn levels(
+    start: u32,
+    glyph: &str,
+    current: Option<u32>,
+    label: &str,
+    action: impl Fn(u32) -> action,
+) -> impl Iterator<Item = item> {
+    (start..=10).rev().map(|step| step * 10).map(move |step| {
+        let selected = current.is_some_and(|current| current.abs_diff(step) < 5);
+        choice(glyph, &format!("{step}%"), selected, run(label, action(step)))
+    })
+}
+
 fn toggle(glyph: &str, label: &str, on: bool, action: impl Fn(&'static str) -> action) -> item {
     let (value, next) = if on { ("on", "off") } else { ("off", "on") };
     entry(glyph, label, value, run(label, action(next)))
@@ -172,10 +185,8 @@ fn settings(status: &status) -> Vec<item> {
     if let Some(audio) = &status.audio {
         let value = if audio.muted { "muted".into() } else { format!("{}%", audio.volume) };
         let mut sub = vec![choice("\u{f0581}", "mute", audio.muted, run("mute", action::audio(audio.mute())))];
-        sub.extend((0..=10).rev().map(|level| level * 10).map(|level| {
-            let current = !audio.muted && audio.volume.abs_diff(level) < 5;
-            choice("\u{f057e}", &format!("{level}%"), current, run("volume", action::audio(audio.volume(level))))
-        }));
+        let level = (!audio.muted).then_some(audio.volume);
+        sub.extend(levels(0, "\u{f057e}", level, "volume", |step| action::audio(audio.volume(step))));
         items.push(menu(volume_glyph(status), "volume", &value, sub));
         for (glyph, label, input, devices) in
             [("\u{f04c3}", "output", false, &audio.sinks), ("\u{f036c}", "input", true, &audio.sources)]
@@ -192,14 +203,7 @@ fn settings(status: &status) -> Vec<item> {
         }
     }
     if let Some(level) = status.brightness {
-        let sub = (1..=10)
-            .rev()
-            .map(|step| step * 10)
-            .map(|step| {
-                let select = run("brightness", action::brightness(step));
-                choice("\u{f00df}", &format!("{step}%"), level.abs_diff(step) < 5, select)
-            })
-            .collect();
+        let sub = levels(1, "\u{f00df}", Some(level), "brightness", action::brightness).collect();
         items.push(menu("\u{f00df}", "brightness", &format!("{level}%"), sub));
     }
     if let Some(profile) = &status.profile {
