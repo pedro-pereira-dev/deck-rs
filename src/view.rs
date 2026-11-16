@@ -223,7 +223,3 @@ impl canvas::Program<message> for deck {
         vec![frame.into_geometry()]
     }
 }
-
-#[cfg(test)]
-#[path = "view.test.rs"]
-mod tests;

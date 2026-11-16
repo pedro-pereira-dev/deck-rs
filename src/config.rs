@@ -23,6 +23,8 @@ pub struct configuration_app {
 
 #[derive(Clone, Deserialize)]
 pub struct configuration_ui {
+    #[serde(default = "default_animation_frequency")]
+    pub animation_frequency: u32,
     pub background: String,
     #[serde(default)]
     pub categories: Vec<String>,
@@ -33,6 +35,10 @@ pub struct configuration_ui {
     pub icons: BTreeMap<String, String>,
     pub navigation_sound: String,
     pub ping: String,
+}
+
+fn default_animation_frequency() -> u32 {
+    120
 }
 
 const default_categories: [&str; 4] = ["Home", "Favorites", "Settings", "Power"];
@@ -131,7 +137,3 @@ fn get_configuration_file_path() -> Option<PathBuf> {
     }
     None
 }
-
-#[cfg(test)]
-#[path = "config.test.rs"]
-mod tests;

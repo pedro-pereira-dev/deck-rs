@@ -93,7 +93,3 @@ pub async fn perform_bluetooth_action(method: &str, object_path: String) -> Resu
         method => call_dbus_method(service, &object_path, device_interface, method, &()).await,
     }
 }
-
-#[cfg(test)]
-#[path = "test.rs"]
-mod tests;

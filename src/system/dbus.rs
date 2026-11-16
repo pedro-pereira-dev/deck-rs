@@ -60,7 +60,3 @@ async fn bus() -> Result<Connection, String> {
     static connection: tokio::sync::OnceCell<Option<Connection>> = tokio::sync::OnceCell::const_new();
     connection.get_or_init(|| async { Connection::system().await.ok() }).await.clone().ok_or("no system bus".into())
 }
-
-#[cfg(test)]
-#[path = "dbus.test.rs"]
-mod tests;

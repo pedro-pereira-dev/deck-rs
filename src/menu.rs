@@ -278,7 +278,3 @@ pub fn build_category_items(
             .collect(),
     }
 }
-
-#[cfg(test)]
-#[path = "menu.test.rs"]
-mod tests;

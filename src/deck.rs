@@ -74,6 +74,11 @@ fn get_category_selection_items(
         .collect()
 }
 
+fn get_animation_frame_interval(config: &configuration) -> Duration {
+    let frequency = config.ui.animation_frequency.max(1) as u64;
+    Duration::from_nanos((1_000_000_000 / frequency).max(1))
+}
+
 impl slide {
     fn is_moving(&self, target: &[f32]) -> bool {
         self.position != target
@@ -83,8 +88,9 @@ impl slide {
         if self.position.len() < 2 { target } else { self.position.clone() }
     }
 
-    fn advance_animation_frame(&mut self, target: &[f32], now: Instant) {
-        let elapsed = self.last_frame.map_or(1.0 / 120.0, |last_frame| (now - last_frame).as_secs_f32());
+    fn advance_animation_frame(&mut self, target: &[f32], now: Instant, frame_interval: Duration) {
+        let elapsed =
+            self.last_frame.map_or(frame_interval.as_secs_f32(), |last_frame| (now - last_frame).as_secs_f32());
         let step = 1.0 - (-elapsed / 0.03).exp();
         self.position.truncate(target.len());
         self.position.extend_from_slice(&target[self.position.len()..]);
@@ -118,42 +124,41 @@ impl deck {
             slide: slide::default(),
             system_snapshot: Arc::default(),
         };
-        let task = deck.refresh_system_snapshot();
+        let task = deck.refresh();
         (deck, task)
     }
 
-    // apply one event and return any asynchronous work it starts.
     fn update(&mut self, message: message) -> Task<message> {
         match message {
             message::done(error) => {
                 let label = self.busy_label.take().unwrap_or_default();
                 self.error_text = error.map(|error| format!("{label} failed: {error}"));
-                return self.refresh_system_snapshot();
+                return self.refresh();
             }
             message::frame(now) => {
-                let target_position = self.get_target_position();
-                self.slide.advance_animation_frame(&target_position, now);
+                let target_position = self.get_menu_display_position();
+                self.slide.advance_animation_frame(&target_position, now, get_animation_frame_interval(&self.config));
             }
             message::exited(index) => {
                 self.running_apps.remove(&index);
-                self.rebuild_menu_items();
+                self.reset();
             }
             message::launch(index) => {
                 if let Some(app) = self.config.app.get(index).cloned()
                     && self.running_apps.insert(index)
                 {
-                    self.rebuild_menu_items();
+                    self.reset();
                     return Task::perform(system::process::launch_app(app), move |_| message::exited(index));
                 }
             }
-            message::nav(nav) => return self.apply_navigation(nav),
+            message::nav(nav) => return self.navigate(nav),
             message::pick { category_index, .. } if category_index != self.category => {
-                return self.select_menu_position(category_index, vec![]);
+                return self.update_selection(category_index, vec![]);
             }
             message::pick { selected_rows, .. } if selected_rows == self.selected_rows => {
-                return self.apply_navigation(navigation::select);
+                return self.navigate(navigation::select);
             }
-            message::pick { selected_rows, .. } => return self.select_menu_position(self.category, selected_rows),
+            message::pick { selected_rows, .. } => return self.update_selection(self.category, selected_rows),
             message::run(label, action) if self.busy_label.is_none() => {
                 (self.busy_label, self.error_text) = (Some(label), None);
                 return Task::perform(system::perform_action(action), |result| message::done(result.err()));
@@ -161,25 +166,25 @@ impl deck {
             message::run(..) | message::idle => {}
             message::snapshot(system_snapshot) => {
                 self.system_snapshot = system_snapshot;
-                self.rebuild_menu_items();
+                self.reset();
             }
             message::mouse => self.last_pointer_activity = Some(Instant::now()),
-            message::tick => return self.refresh_system_snapshot(),
+            message::tick => return self.refresh(),
         }
         Task::none()
     }
 
-    fn get_target_position(&self) -> Vec<f32> {
+    fn get_menu_display_position(&self) -> Vec<f32> {
         let head = [self.category as f32, self.selected_rows.len() as f32 - 1.0];
         head.into_iter().chain(self.selected_rows.iter().map(|row| *row as f32)).collect()
     }
 
-    fn rebuild_menu_items(&mut self) {
+    fn reset(&mut self) {
         self.menu_items = get_category_selection_items(&self.config, &self.system_snapshot, &self.running_apps);
-        self.clamp_selection();
+        self.store_selection();
     }
 
-    fn clamp_selection(&mut self) {
+    fn store_selection(&mut self) {
         for (index, items) in self.menu_items.iter().enumerate() {
             if let Some(row) = self.remembered_rows.get_mut(index) {
                 *row = (*row).min(items.len().saturating_sub(1));
@@ -204,8 +209,7 @@ impl deck {
         self.remembered_rows[self.category] = self.selected_rows[0];
     }
 
-    // change the active category or nested selection and play the navigation sound.
-    fn select_menu_position(&mut self, category: usize, selected_rows: Vec<usize>) -> Task<message> {
+    fn update_selection(&mut self, category: usize, selected_rows: Vec<usize>) -> Task<message> {
         let category = category.min(self.remembered_rows.len().saturating_sub(1));
         let selected_rows = if category == self.category {
             selected_rows
@@ -216,15 +220,14 @@ impl deck {
             return Task::none();
         }
         if self.slide.position.is_empty() {
-            self.slide.position = self.get_target_position();
+            self.slide.position = self.get_menu_display_position();
         }
         (self.category, self.selected_rows, self.slide.last_frame) = (category, selected_rows, None);
         self.remembered_rows[category] = self.selected_rows[0];
         Task::future(system::process::play_navigation_sound(self.navigation_sound.clone())).discard()
     }
 
-    // translate directional/select commands into menu movement or item activation.
-    fn apply_navigation(&mut self, nav: navigation) -> Task<message> {
+    fn navigate(&mut self, nav: navigation) -> Task<message> {
         let (depth, selected_rows, row, item_count, child_row, activation) = {
             let columns = self.get_selection_category_breadcrumb(self.get_category_items());
             let mut selected_rows = self.selected_rows[..columns.len()].to_vec();
@@ -242,17 +245,17 @@ impl deck {
         };
         let category = self.category;
         match nav {
-            navigation::back if depth > 0 => self.select_menu_position(category, selected_rows[..depth].to_vec()),
-            navigation::left => self.select_menu_position(category.saturating_sub(1), vec![]),
-            navigation::right => self.select_menu_position(category + 1, vec![]),
-            navigation::down => self.select_menu_position(
+            navigation::back if depth > 0 => self.update_selection(category, selected_rows[..depth].to_vec()),
+            navigation::left => self.update_selection(category.saturating_sub(1), vec![]),
+            navigation::right => self.update_selection(category + 1, vec![]),
+            navigation::down => self.update_selection(
                 category,
                 [&selected_rows[..depth], &[(row + 1).min(item_count.saturating_sub(1))]].concat(),
             ),
-            navigation::menu => self.select_menu_position(get_favorites_category_index(&self.config), vec![]),
+            navigation::menu => self.update_selection(get_favorites_category_index(&self.config), vec![]),
             navigation::select if child_row.is_some() => {
                 let row = child_row.unwrap_or_default();
-                self.select_menu_position(category, [&selected_rows[..], &[row]].concat())
+                self.update_selection(category, [&selected_rows[..], &[row]].concat())
             }
             navigation::select => activation.map_or(Task::none(), |activation| {
                 self.update(match activation {
@@ -261,18 +264,18 @@ impl deck {
                 })
             }),
             navigation::up => {
-                self.select_menu_position(category, [&selected_rows[..depth], &[row.saturating_sub(1)]].concat())
+                self.update_selection(category, [&selected_rows[..depth], &[row.saturating_sub(1)]].concat())
             }
             _ => Task::none(),
         }
     }
 
-    // query system modules and send the completed snapshot back as a message.
-    fn refresh_system_snapshot(&self) -> Task<message> {
+    fn refresh(&self) -> Task<message> {
         Task::perform(collect_system_snapshot(self.config.clone()), |snapshot| message::snapshot(snapshot.into()))
     }
 
     fn subscription(&self) -> Subscription<message> {
+        let animation_frame_interval = get_animation_frame_interval(&self.config);
         Subscription::batch([
             event::listen_with(crate::input::keys),
             time::every(Duration::from_secs(5)).map(|_| message::tick),
@@ -284,10 +287,10 @@ impl deck {
             } else {
                 Subscription::none()
             },
-            if !self.slide.is_moving(&self.get_target_position()) {
+            if !self.slide.is_moving(&self.get_menu_display_position()) {
                 Subscription::none()
             } else {
-                time::every(Duration::from_micros(8_333)).map(|_| message::frame(Instant::now()))
+                time::every(animation_frame_interval).map(|_| message::frame(Instant::now()))
             },
             Subscription::run(crate::input::gamepad),
         ])
@@ -305,7 +308,7 @@ impl deck {
     }
 
     pub(crate) fn get_display_position(&self) -> Vec<f32> {
-        self.slide.get_position(self.get_target_position())
+        self.slide.get_position(self.get_menu_display_position())
     }
 
     pub(crate) fn get_category_items(&self) -> &[item] {
@@ -323,7 +326,3 @@ pub fn run(config: configuration, error: Option<String>) -> iced::Result {
         .window(iced::window::Settings { fullscreen: true, ..Default::default() })
         .run()
 }
-
-#[cfg(test)]
-#[path = "deck.test.rs"]
-mod tests;

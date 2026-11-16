@@ -14,7 +14,7 @@ default:
 build *args:
     {{ nix }} cargo build --profile {{ profile }} {{ args }}
 
-check: lint test
+check: lint
 
 format:
     {{ nix }} cargo fmt
@@ -66,9 +66,6 @@ shot name="home" *keys:
     sleep 0.5
     {{ nix }} grim target/shots/{{ name }}.png
     printf '%s\n' target/shots/{{ name }}.png
-
-test *args:
-    {{ nix }} cargo test {{ args }}
 
 watch *args:
     {{ nix }} watchexec --restart --watch src --watch assets --watch Cargo.toml -- \

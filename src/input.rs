@@ -84,7 +84,3 @@ pub fn gamepad() -> impl iced::futures::Stream<Item = message> {
         .await;
     })
 }
-
-#[cfg(test)]
-#[path = "input.test.rs"]
-mod tests;

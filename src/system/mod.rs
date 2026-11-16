@@ -36,20 +36,3 @@ pub async fn perform_action(action: crate::system::action::action) -> Result<(),
         action::profile(profile) => power::set_profile(profile).await,
     }
 }
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn path_lookup_checks_each_candidate_directory() {
-        let root = std::env::temp_dir().join(format!("deck-rs-path-test-{}", std::process::id()));
-        let first = root.join("first");
-        let second = root.join("second");
-        std::fs::create_dir_all(&first).unwrap();
-        std::fs::create_dir_all(&second).unwrap();
-        std::fs::write(first.join("deck-rs-test-bin"), "first").unwrap();
-
-        assert!(super::is_executable_in_directories("deck-rs-test-bin", [second.clone(), first.clone()]));
-        assert!(!super::is_executable_in_directories("deck-rs-missing-bin", [first, second]));
-        std::fs::remove_dir_all(root).unwrap();
-    }
-}

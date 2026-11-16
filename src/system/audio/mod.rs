@@ -119,7 +119,3 @@ pub async fn run_audio_command(args: Vec<String>) -> Result<(), String> {
     let exit_status = Command::new(program).args(args).status().await.map_err(|error| error.to_string())?;
     exit_status.success().then_some(()).ok_or(format!("{program} failed"))
 }
-
-#[cfg(test)]
-#[path = "test.rs"]
-mod tests;

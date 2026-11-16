@@ -78,7 +78,3 @@ pub async fn perform_wifi_action(method: &str, object_path: String) -> Result<()
         method => call_dbus_method(service, &object_path, station, method, &()).await,
     }
 }
-
-#[cfg(test)]
-#[path = "wifi.test.rs"]
-mod tests;

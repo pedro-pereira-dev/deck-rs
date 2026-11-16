@@ -1,8 +1,9 @@
 [ui]
+animation_frequency = 120
 background = ""
+categories = []
 favorites = []
 font = "assets/SymbolsNerdFontMono-Regular.ttf"
 font_family = "Symbols Nerd Font Mono"
-categories = []
 ping = "9.9.9.9"
 navigation_sound = "assets/nav.wav"

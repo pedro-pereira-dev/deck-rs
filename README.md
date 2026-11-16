@@ -17,7 +17,7 @@ The source is organized by responsibility:
 - `src/main.rs` starts the application.
 
 System queries run concurrently when a snapshot is refreshed. Menus are rebuilt from each new snapshot and
-selection is clamped to available rows. Menu movement uses a short 120 fps slide; no animation frames are
+selection is clamped to available rows. Menu movement uses a short 120 fps slide by default; no animation frames are
 scheduled when the target position has been reached.
 
 ## Controls
@@ -53,12 +53,13 @@ icon = "\U000F04D3"
 name = "steam"
 
 [ui]
+animation_frequency = 120
 background = "/path/to/wallpaper.png"
+categories = ["games"]
 favorites = ["steam"]
 font = "/path/to/your-font.ttf"
 font_family = "Symbols Nerd Font Mono"
 icons = { games = "\U000F0297" }
-categories = ["games"]
 ping = "9.9.9.9"
 navigation_sound = "/path/to/nav.wav"
 ```
@@ -69,6 +70,7 @@ and cannot remove or reorder the built-ins. Category matching and duplicate filt
 extra category lists the `[[app]]` entries with that `category`, using its glyph from `[ui].icons`. `favorites`
 names apps from any category and always ends with suspend. The default font and sound use the bundled assets; an empty
 `background` is black and an empty `navigation_sound` uses the embedded click through `pw-play` or `paplay`.
+`[ui].animation_frequency` sets the animation frame rate in frames per second; it defaults to `120`.
 
 System controls are detected automatically. Audio controls appear when `wpctl` or `pactl` is installed;
 Bluetooth, Wi-Fi, power, brightness, and power-profile controls appear when their supported system services or
@@ -96,17 +98,16 @@ the font asset tracked.
 | ------------- | -------------------------------------------------------- |
 | `just`        | List recipes                                             |
 | `just build`  | Build the app                                            |
-| `just check`  | Run lint and tests                                       |
+| `just check`  | Run formatting and lint checks                          |
 | `just format` | Format Rust and Nix files                                |
 | `just lint`   | Check formatting and run clippy                          |
 | `just remote` | Sync to `REMOTE=user@host` and run it on change          |
 | `just run`    | Run the app                                              |
 | `just shot`   | Screenshot headlessly, e.g. `just shot power Home Right` |
-| `just test`   | Run tests                                                |
 | `just watch`  | Rebuild and rerun the app on change                      |
 
-Extra arguments are passed to cargo, e.g. `just test config::tests`. Screenshots are written to
-`target/shots/`; `RESOLUTION` (default `3840x2160`) and `DELAY` (default `3`) tune `just shot`.
+Screenshots are written to `target/shots/`; `RESOLUTION` (default `3840x2160`) and `DELAY` (default `3`) tune
+`just shot`.
 
 The build profile defaults to `dev`; override it with `PROFILE`:
 

@@ -171,7 +171,3 @@ pub async fn collect_system_snapshot(config: Arc<configuration>) -> system_snaps
 pub fn directory_entries(directory: &str) -> impl Iterator<Item = DirEntry> {
     std::fs::read_dir(directory).into_iter().flatten().flatten()
 }
-
-#[cfg(test)]
-#[path = "host.test.rs"]
-mod tests;

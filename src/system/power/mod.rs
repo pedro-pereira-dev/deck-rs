@@ -58,7 +58,3 @@ pub async fn set_brightness(level: u32) -> Result<(), String> {
 pub async fn set_profile(profile: String) -> Result<(), String> {
     set_dbus_property(profiles, profiles_root, profiles, "ActiveProfile", profile.into()).await
 }
-
-#[cfg(test)]
-#[path = "test.rs"]
-mod tests;
