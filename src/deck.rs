@@ -9,6 +9,7 @@ use crate::system;
 use crate::system::action::action;
 use crate::system::host::{collect_system_snapshot, system_snapshot};
 use crate::view;
+use iced::keyboard::{Key, key::Named};
 use iced::{Font, Subscription, Task, event, time};
 
 #[derive(Clone, Copy)]
@@ -28,6 +29,7 @@ pub enum message {
     exited(usize),
     frame(Instant),
     idle,
+    key_press { key: Key, text: Option<String> },
     launch(usize),
     mouse,
     nav(navigation),
@@ -35,6 +37,15 @@ pub enum message {
     run(String, action),
     snapshot(Arc<system_snapshot>),
     tick,
+    wifi_cancel,
+    wifi_check,
+    wifi_character(char),
+    wifi_clear,
+    wifi_delete,
+    wifi_move(navigation),
+    wifi_select_key,
+    wifi_shift,
+    wifi_submit,
 }
 
 #[derive(Default)]
@@ -57,6 +68,23 @@ pub struct deck {
     pub selected_rows: Vec<usize>,
     pub slide: slide,
     pub system_snapshot: Arc<system_snapshot>,
+    pub wifi_prompt: Option<wifi_prompt>,
+}
+
+pub struct wifi_prompt {
+    pub agent: system::wifi::credential_agent,
+    pub network: String,
+    pub passphrase: String,
+    pub selected_key: usize,
+    pub requested: bool,
+    pub uppercase: bool,
+}
+
+pub const wifi_keys: &str = "abcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()-_=+[]{};:',.<>/?\\|`~\" ";
+
+pub fn valid_wifi_passphrase(passphrase: &str) -> bool {
+    (8..=63).contains(&passphrase.len())
+        || (passphrase.len() == 64 && passphrase.bytes().all(|byte| byte.is_ascii_hexdigit()))
 }
 
 fn get_favorites_category_index(config: &configuration) -> usize {
@@ -77,6 +105,19 @@ fn get_category_selection_items(
 fn get_animation_frame_interval(config: &configuration) -> Duration {
     let frequency = config.ui.animation_frequency.max(1) as u64;
     Duration::from_nanos((1_000_000_000 / frequency).max(1))
+}
+
+fn input_navigation(key: Named) -> Option<navigation> {
+    Some(match key {
+        Named::ArrowDown => navigation::down,
+        Named::ArrowLeft => navigation::left,
+        Named::ArrowRight => navigation::right,
+        Named::ArrowUp => navigation::up,
+        Named::Backspace | Named::BrowserBack | Named::Escape | Named::Exit | Named::GoBack => navigation::back,
+        Named::BrowserHome | Named::ContextMenu | Named::Home | Named::Power | Named::Settings => navigation::menu,
+        Named::Enter | Named::Select | Named::Space => navigation::select,
+        _ => return None,
+    })
 }
 
 impl slide {
@@ -123,6 +164,7 @@ impl deck {
             selected_rows: vec![0],
             slide: slide::default(),
             system_snapshot: Arc::default(),
+            wifi_prompt: None,
         };
         let task = deck.refresh();
         (deck, task)
@@ -133,6 +175,7 @@ impl deck {
             message::done(error) => {
                 let label = self.busy_label.take().unwrap_or_default();
                 self.error_text = error.map(|error| format!("{label} failed: {error}"));
+                self.wifi_prompt = None;
                 return self.refresh();
             }
             message::frame(now) => {
@@ -151,7 +194,29 @@ impl deck {
                     return Task::perform(system::process::launch_app(app), move |_| message::exited(index));
                 }
             }
+            message::nav(nav) if self.wifi_prompt.is_some() => {
+                if !self.wifi_prompt.as_ref().is_some_and(|prompt| prompt.requested) {
+                    return Task::none();
+                }
+                return match nav {
+                    navigation::select => self.update(message::wifi_select_key),
+                    navigation::back => self.update(message::wifi_cancel),
+                    navigation::up | navigation::down | navigation::left | navigation::right => {
+                        self.update(message::wifi_move(nav))
+                    }
+                    navigation::menu => Task::none(),
+                };
+            }
             message::nav(nav) => return self.navigate(nav),
+            message::key_press { key, text } if self.wifi_prompt.is_some() => {
+                return self.update_wifi_prompt(key, text);
+            }
+            message::key_press { key: Key::Named(key), .. } => {
+                if let Some(nav) = input_navigation(key) {
+                    return self.navigate(nav);
+                }
+            }
+            message::key_press { .. } => {}
             message::pick { category_index, .. } if category_index != self.category => {
                 return self.update_selection(category_index, vec![]);
             }
@@ -160,8 +225,75 @@ impl deck {
             }
             message::pick { selected_rows, .. } => return self.update_selection(self.category, selected_rows),
             message::run(label, action) if self.busy_label.is_none() => {
+                if let action::wifi_connect(path, network) = action {
+                    let agent = system::wifi::credential_agent::new();
+                    self.wifi_prompt = Some(wifi_prompt {
+                        agent: agent.clone(),
+                        network,
+                        passphrase: String::new(),
+                        selected_key: 0,
+                        requested: false,
+                        uppercase: false,
+                    });
+                    self.busy_label = Some(label);
+                    self.error_text = None;
+                    return Task::perform(system::wifi::connect_with_agent(path, agent), |result| {
+                        message::done(result.err())
+                    });
+                }
                 (self.busy_label, self.error_text) = (Some(label), None);
                 return Task::perform(system::perform_action(action), |result| message::done(result.err()));
+            }
+            message::wifi_check => {
+                if let Some(prompt) = &mut self.wifi_prompt {
+                    prompt.requested = prompt.agent.request_state() == system::wifi::agent_request::requested;
+                }
+            }
+            message::wifi_character(value) => self.enter_wifi_character(value),
+            message::wifi_delete => {
+                if let Some(prompt) = &mut self.wifi_prompt {
+                    prompt.passphrase.pop();
+                }
+            }
+            message::wifi_clear => {
+                if let Some(prompt) = &mut self.wifi_prompt {
+                    prompt.passphrase.clear();
+                }
+            }
+            message::wifi_shift => {
+                if let Some(prompt) = &mut self.wifi_prompt {
+                    prompt.uppercase = !prompt.uppercase;
+                }
+            }
+            message::wifi_submit => {
+                if let Some(prompt) = &mut self.wifi_prompt
+                    && prompt.requested
+                    && valid_wifi_passphrase(&prompt.passphrase)
+                {
+                    let agent = prompt.agent.clone();
+                    let passphrase = std::mem::take(&mut prompt.passphrase);
+                    prompt.requested = false;
+                    return Task::perform(agent.submit(passphrase), |_| message::wifi_check);
+                }
+            }
+            message::wifi_cancel => {
+                if let Some(prompt) = &self.wifi_prompt {
+                    let agent = prompt.agent.clone();
+                    return Task::perform(agent.decline(), |_| message::wifi_check);
+                }
+            }
+            message::wifi_move(nav) => self.move_wifi_key(nav),
+            message::wifi_select_key => {
+                if let Some(value) =
+                    self.wifi_prompt.as_ref().and_then(|prompt| wifi_keys.chars().nth(prompt.selected_key))
+                {
+                    let value = self
+                        .wifi_prompt
+                        .as_ref()
+                        .filter(|prompt| prompt.uppercase)
+                        .map_or(value, |_| value.to_ascii_uppercase());
+                    self.enter_wifi_character(value);
+                }
             }
             message::run(..) | message::idle => {}
             message::snapshot(system_snapshot) => {
@@ -270,6 +402,59 @@ impl deck {
         }
     }
 
+    fn update_wifi_prompt(&mut self, key: Key, text: Option<String>) -> Task<message> {
+        if self.wifi_prompt.as_ref().is_some_and(|prompt| !prompt.requested) {
+            return Task::none();
+        }
+        match key {
+            Key::Named(Named::Escape | Named::BrowserBack | Named::GoBack | Named::Backspace) => {
+                if matches!(key, Key::Named(Named::Backspace)) {
+                    return self.update(message::wifi_delete);
+                }
+                return self.update(message::wifi_cancel);
+            }
+            Key::Named(Named::Space) => return self.update(message::wifi_character(' ')),
+            Key::Named(Named::Enter | Named::Select) => return self.update(message::wifi_submit),
+            Key::Named(Named::ArrowDown) => return self.update(message::wifi_move(navigation::down)),
+            Key::Named(Named::ArrowUp) => return self.update(message::wifi_move(navigation::up)),
+            Key::Named(Named::ArrowLeft) => return self.update(message::wifi_move(navigation::left)),
+            Key::Named(Named::ArrowRight) => return self.update(message::wifi_move(navigation::right)),
+            Key::Named(_) => {}
+            Key::Character(_) => {
+                if let Some(value) =
+                    text.and_then(|text| (text.chars().count() == 1).then(|| text.chars().next()).flatten())
+                {
+                    return self.update(message::wifi_character(value));
+                }
+            }
+            Key::Unidentified => {}
+        }
+        Task::none()
+    }
+
+    fn enter_wifi_character(&mut self, value: char) {
+        if value.is_ascii()
+            && !value.is_ascii_control()
+            && let Some(prompt) = &mut self.wifi_prompt
+            && prompt.passphrase.len() < 64
+        {
+            prompt.passphrase.push(value);
+        }
+    }
+
+    fn move_wifi_key(&mut self, nav: navigation) {
+        let Some(prompt) = &mut self.wifi_prompt else { return };
+        let count = wifi_keys.chars().count();
+        let columns = 12;
+        prompt.selected_key = match nav {
+            navigation::left => prompt.selected_key.saturating_sub(1),
+            navigation::right => (prompt.selected_key + 1).min(count - 1),
+            navigation::up => prompt.selected_key.saturating_sub(columns),
+            navigation::down => (prompt.selected_key + columns).min(count - 1),
+            _ => prompt.selected_key,
+        };
+    }
+
     fn refresh(&self) -> Task<message> {
         Task::perform(collect_system_snapshot(self.config.clone()), |snapshot| message::snapshot(snapshot.into()))
     }
@@ -293,6 +478,15 @@ impl deck {
                 time::every(animation_frame_interval).map(|_| message::frame(Instant::now()))
             },
             Subscription::run(crate::input::handle_controller_events),
+            if self
+                .wifi_prompt
+                .as_ref()
+                .is_some_and(|prompt| prompt.agent.request_state() == system::wifi::agent_request::pending)
+            {
+                time::every(Duration::from_millis(100)).map(|_| message::wifi_check)
+            } else {
+                Subscription::none()
+            },
         ])
     }
 

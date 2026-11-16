@@ -1,20 +1,7 @@
 use crate::deck::{message, navigation};
 use iced::futures::SinkExt;
-use iced::keyboard::{self, Key, key::Named};
+use iced::keyboard;
 use iced::{Event, event};
-
-fn navigate_with_keyboard(key: Named) -> Option<navigation> {
-    Some(match key {
-        Named::ArrowDown => navigation::down,
-        Named::ArrowLeft => navigation::left,
-        Named::ArrowRight => navigation::right,
-        Named::ArrowUp => navigation::up,
-        Named::Backspace | Named::BrowserBack | Named::Escape | Named::Exit | Named::GoBack => navigation::back,
-        Named::BrowserHome | Named::ContextMenu | Named::Home | Named::Power | Named::Settings => navigation::menu,
-        Named::Enter | Named::Select | Named::Space => navigation::select,
-        _ => return None,
-    })
-}
 
 fn get_keyboard_navigation_from_controller(event: gilrs::EventType, stick: &mut (i8, i8)) -> Option<navigation> {
     use gilrs::EventType;
@@ -58,8 +45,8 @@ fn navigate_with_controller_buttons(button: gilrs::Button) -> Option<navigation>
 }
 
 pub fn handle_keyboard_event(event: Event, _: event::Status, _: iced::window::Id) -> Option<message> {
-    let Event::Keyboard(keyboard::Event::KeyPressed { key: Key::Named(key), .. }) = event else { return None };
-    Some(message::nav(navigate_with_keyboard(key)?))
+    let Event::Keyboard(keyboard::Event::KeyPressed { key, text, .. }) = event else { return None };
+    Some(message::key_press { key, text: text.map(|text| text.to_string()) })
 }
 
 pub fn handle_controller_events() -> impl iced::futures::Stream<Item = message> {

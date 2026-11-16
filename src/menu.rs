@@ -132,23 +132,28 @@ fn settings_category_items(status: &system_snapshot) -> Vec<item> {
     };
     let mut sub = Vec::new();
     if let Some(wifi) = &status.wifi {
-        sub.push(toggle_item("\u{f05a9}", "wi-fi", wifi.is_powered, |next| {
-            action::network(next, wifi.adapter_object_path.clone())
-        }));
-        sub.push(submenu_item(
-            "\u{f0349}",
-            "scan",
-            "",
-            activate_item("scan", action::network("Scan", wifi.adapter_object_path.clone())),
-        ));
+        if !wifi.adapter_object_path.is_empty() {
+            sub.push(toggle_item("\u{f05a9}", "wi-fi", wifi.is_powered, |next| {
+                action::network(next, wifi.adapter_object_path.clone())
+            }));
+        }
+        let scan_activation = wifi
+            .station_object_path
+            .as_ref()
+            .and_then(|path| activate_item("scan", action::network("Scan", path.clone())));
+        sub.push(submenu_item("\u{f0349}", "scan", "", scan_activation));
         sub.extend(wifi.networks.iter().map(|network| {
             let (value, label, action) = match network.is_active {
-                true => {
-                    ("connected".into(), "disconnect", action::network("Disconnect", wifi.adapter_object_path.clone()))
-                }
-                false => {
-                    ("●".repeat(network.signal), "connect", action::network("Connect", network.object_path.clone()))
-                }
+                true => (
+                    "connected".into(),
+                    "disconnect",
+                    action::network("Disconnect", wifi.station_object_path.clone().unwrap_or_default()),
+                ),
+                false => (
+                    "●".repeat(network.signal),
+                    "connect",
+                    action::wifi_connect(network.object_path.clone(), network.ssid.clone()),
+                ),
             };
             menu_item(
                 "\u{f05a9}",
@@ -157,6 +162,9 @@ fn settings_category_items(status: &system_snapshot) -> Vec<item> {
                 vec![submenu_item("\u{f05a9}", label, "", activate_item(label, action))],
             )
         }));
+        if let Some(status) = &wifi.status {
+            sub.push(submenu_item("\u{f05aa}", status, "", None));
+        }
     }
     items.push(menu_item(
         network_glyph(status),

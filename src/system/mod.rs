@@ -34,5 +34,6 @@ pub async fn perform_action(action: crate::system::action::action) -> Result<(),
         action::network(method, path) => wifi::perform_wifi_action(method, path).await,
         action::power(method) => power::perform_power_action(method).await,
         action::profile(profile) => power::set_profile(profile).await,
+        action::wifi_connect(..) => Err("Wi-Fi connections require the in-app credential prompt".into()),
     }
 }

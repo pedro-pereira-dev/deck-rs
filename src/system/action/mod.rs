@@ -6,4 +6,5 @@ pub enum action {
     network(&'static str, String),
     power(&'static str),
     profile(String),
+    wifi_connect(String, String),
 }
