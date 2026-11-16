@@ -1,4 +1,4 @@
-use super::output;
+use super::run_command_and_capture_stdout;
 use tokio::process::Command;
 
 #[derive(Clone)]
@@ -17,6 +17,7 @@ pub struct audio {
     pub volume: u32,
 }
 
+// create backend-specific command arguments for audio controls.
 impl audio {
     pub fn mute(&self) -> Vec<String> {
         match self.tool {
@@ -40,16 +41,20 @@ impl audio {
     }
 }
 
-pub async fn query(backend: &str) -> Option<audio> {
-    let tool =
-        ["wpctl", "pactl"].into_iter().find(|tool| (backend == "auto" || backend == *tool) && super::which(tool))?;
+fn args(values: &[&str]) -> Vec<String> {
+    values.iter().map(|value| value.to_string()).collect()
+}
+
+// read volume, mute state, and available devices from pipewire or pulseaudio tools.
+pub async fn query_audio_state() -> Option<audio> {
+    let tool = ["wpctl", "pactl"].into_iter().find(|tool| super::is_executable_on_path(tool))?;
     Some(if tool == "pactl" {
         let (volume, info, muted, sinks, sources) = iced::futures::join!(
-            output(tool, &["get-sink-volume", "@DEFAULT_SINK@"]),
-            output(tool, &["info"]),
-            output(tool, &["get-sink-mute", "@DEFAULT_SINK@"]),
-            output(tool, &["list", "short", "sinks"]),
-            output(tool, &["list", "short", "sources"]),
+            run_command_and_capture_stdout(tool, &["get-sink-volume", "@DEFAULT_SINK@"]),
+            run_command_and_capture_stdout(tool, &["info"]),
+            run_command_and_capture_stdout(tool, &["get-sink-mute", "@DEFAULT_SINK@"]),
+            run_command_and_capture_stdout(tool, &["list", "short", "sinks"]),
+            run_command_and_capture_stdout(tool, &["list", "short", "sources"]),
         );
         audio {
             muted: muted.contains("yes"),
@@ -66,8 +71,10 @@ pub async fn query(backend: &str) -> Option<audio> {
                 .unwrap_or(0),
         }
     } else {
-        let (volume, status) =
-            iced::futures::join!(output(tool, &["get-volume", "@DEFAULT_AUDIO_SINK@"]), output(tool, &["status"]));
+        let (volume, status) = iced::futures::join!(
+            run_command_and_capture_stdout(tool, &["get-volume", "@DEFAULT_AUDIO_SINK@"]),
+            run_command_and_capture_stdout(tool, &["status"])
+        );
         audio {
             muted: volume.contains("MUTED"),
             sinks: wpctl_sinks(&status, "Sinks:"),
@@ -82,14 +89,11 @@ pub async fn query(backend: &str) -> Option<audio> {
     })
 }
 
-pub async fn run(args: Vec<String>) -> Result<(), String> {
+// execute an audio command and report unsuccessful exit statuses.
+pub async fn run_audio_command(args: Vec<String>) -> Result<(), String> {
     let (program, args) = args.split_first().ok_or("empty command")?;
-    let status = Command::new(program).args(args).status().await.map_err(|error| error.to_string())?;
-    status.success().then_some(()).ok_or(format!("{program} failed"))
-}
-
-fn args(values: &[&str]) -> Vec<String> {
-    values.iter().map(|value| value.to_string()).collect()
+    let exit_status = Command::new(program).args(args).status().await.map_err(|error| error.to_string())?;
+    exit_status.success().then_some(()).ok_or(format!("{program} failed"))
 }
 
 fn pactl_sinks(text: &str, info: &str, kind: &str) -> Vec<sink> {
@@ -101,6 +105,7 @@ fn pactl_sinks(text: &str, info: &str, kind: &str) -> Vec<sink> {
         .collect()
 }
 
+// parse the device tree printed by wpctl into selectable audio devices.
 fn wpctl_sinks(text: &str, section: &str) -> Vec<sink> {
     text.lines()
         .skip_while(|line| !line.contains(section))
@@ -115,21 +120,5 @@ fn wpctl_sinks(text: &str, section: &str) -> Vec<sink> {
 }
 
 #[cfg(test)]
-mod tests {
-    #[test]
-    fn parses_pactl_sinks() {
-        let sinks = super::pactl_sinks("42 alsa_output.pci-1\n43 usb_headset\n", "Default Sink: usb_headset\n", "Sink");
-        assert_eq!(sinks.len(), 2);
-        assert_eq!(sinks[0].name, "alsa_output.pci-1");
-        assert!(sinks[1].default);
-    }
-
-    #[test]
-    fn parses_wpctl_sinks() {
-        let sinks = super::wpctl_sinks("Audio\n ├─ Sinks:\n │  * 42. Speakers [vol: 0.50]\n", "Sinks:");
-        assert_eq!(sinks.len(), 1);
-        assert!(sinks[0].default);
-        assert_eq!(sinks[0].id, "42");
-        assert_eq!(sinks[0].name, "Speakers");
-    }
-}
+#[path = "audio.test.rs"]
+mod tests;

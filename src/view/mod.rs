@@ -1,5 +1,6 @@
-use crate::deck::{deck, message, nav};
-use crate::items::{bluetooth_glyph, check, network_glyph, title, volume_glyph};
+use crate::controller::deck::deck;
+use crate::controller::messages::{message, nav};
+use crate::model::menu::{bluetooth_glyph, category_glyph, check, network_glyph, volume_glyph};
 use iced::alignment::Vertical;
 use iced::mouse::{Button, ScrollDelta};
 use iced::widget::canvas::{self, Action, Event, Frame, Geometry, Text};
@@ -11,6 +12,7 @@ const dim: Color = Color::from_rgba(1.0, 1.0, 1.0, 0.15);
 pub const foreground: Color = Color::WHITE;
 const muted: Color = Color::from_rgba(1.0, 1.0, 1.0, 0.6);
 
+// use the configured image as a backdrop, with the canvas drawing the interface.
 pub fn view(deck: &deck) -> Element<'_, message> {
     let canvas = canvas::Canvas::new(deck).width(Length::Fill).height(Length::Fill);
     match deck.config.ui.background.as_str() {
@@ -21,10 +23,12 @@ pub fn view(deck: &deck) -> Element<'_, message> {
     }
 }
 
+// position each menu column relative to the center and current depth.
 fn column_x(unit: f32, width: f32, column: usize, depth: f32) -> f32 {
     width / 2.0 - unit + (column as f32 - depth) * unit * 3.5
 }
 
+// place and scale a row so nearby choices form the focused menu layout.
 fn spot(unit: f32, column: usize, index: usize, selected: f32) -> (f32, f32) {
     let offset = index as f32 - selected;
     let (big, small) = if column > 0 { (0.35, 0.25) } else { (0.45, 0.3) };
@@ -37,6 +41,7 @@ fn spot(unit: f32, column: usize, index: usize, selected: f32) -> (f32, f32) {
     (unit * y, unit * (small + (big - small) * (1.0 - offset.abs()).max(0.0)))
 }
 
+// measure a label so its selection underline matches the rendered text width.
 fn measure(content: &str, size: f32) -> f32 {
     use iced::advanced::text::{self, Paragraph as _};
     let text = text::Text {
@@ -53,37 +58,42 @@ fn measure(content: &str, size: f32) -> f32 {
     <Renderer as text::Renderer>::Paragraph::with_text(text).min_width()
 }
 
+// handle pointer interaction and draw the complete interface using iced's canvas.
 impl canvas::Program<message> for deck {
     type State = ();
 
+    // convert pointer events into the same pick and navigation messages as other input.
     fn update(&self, _: &mut (), event: &Event, bounds: Rectangle, cursor: mouse::Cursor) -> Option<Action<message>> {
         if let Event::Mouse(mouse::Event::CursorMoved { .. }) = event {
             return Some(Action::publish(message::mouse));
         }
         let point = cursor.position_in(bounds)?;
         let unit = bounds.height / 10.0;
-        let shown = self.shown();
+        let display_position = self.display_position();
         let message = match event {
             Event::Mouse(mouse::Event::ButtonPressed(Button::Left)) => {
-                let root = self.root();
-                let columns = self.columns(&root);
+                let columns = self.visible_columns(self.get_category_items());
                 let depth = columns.len() - 1;
-                let category = (0..self.config.ui.modules.len()).filter(|_| depth < 2).find(|index| {
-                    let x = column_x(unit, bounds.width, 0, shown[1]) + (*index as f32 - shown[0]) * unit * 1.4;
-                    (point.x - x).abs() < unit * 0.5 && (point.y - unit * 3.6).abs() < unit * 0.4
-                });
+                let category = (0..crate::model::config::get_configured_categories(&self.config).len())
+                    .filter(|_| depth < 2)
+                    .find(|index| {
+                        let x = column_x(unit, bounds.width, 0, display_position[1])
+                            + (*index as f32 - display_position[0]) * unit * 1.4;
+                        (point.x - x).abs() < unit * 0.5 && (point.y - unit * 3.6).abs() < unit * 0.4
+                    });
                 let row = columns.iter().enumerate().skip(depth.saturating_sub(1)).find_map(|(column, items)| {
-                    let x = column_x(unit, bounds.width, column, shown[1]);
+                    let x = column_x(unit, bounds.width, column, display_position[1]);
                     (0..items.len()).find_map(|index| {
-                        let (y, _) = spot(unit, column, index, shown.get(column + 2).copied().unwrap_or(0.0));
+                        let (y, _) =
+                            spot(unit, column, index, display_position.get(column + 2).copied().unwrap_or(0.0));
                         let hit =
                             point.x > x - unit * 0.5 && point.x < x + unit * 5.0 && (point.y - y).abs() < unit * 0.25;
-                        hit.then(|| [&self.path[..column], &[index]].concat())
+                        hit.then(|| [&self.selected_rows[..column], &[index]].concat())
                     })
                 });
                 match (category, row) {
-                    (Some(category), _) => message::pick(category, Vec::new()),
-                    (_, Some(path)) => message::pick(self.category, path),
+                    (Some(category_index), _) => message::pick { category_index, selected_rows: Vec::new() },
+                    (_, Some(selected_rows)) => message::pick { category_index: self.category, selected_rows },
                     _ => return None,
                 }
             }
@@ -102,15 +112,19 @@ impl canvas::Program<message> for deck {
         Some(Action::publish(message).and_capture())
     }
 
+    // hide the pointer after it has been idle for a short time.
     fn mouse_interaction(&self, _: &(), _: Rectangle, _: mouse::Cursor) -> mouse::Interaction {
-        let active = self.moved.is_some_and(|moved| moved.elapsed().as_secs_f32() < 4.0);
+        let active =
+            self.last_pointer_activity.is_some_and(|last_activity| last_activity.elapsed().as_secs_f32() < 4.0);
         if active { mouse::Interaction::default() } else { mouse::Interaction::Hidden }
     }
 
+    // draw status, page navigation, nested menu rows, and current-level indicators.
     fn draw(&self, _: &(), renderer: &Renderer, _: &Theme, bounds: Rectangle, _: mouse::Cursor) -> Vec<Geometry> {
         let mut frame = Frame::new(renderer, bounds.size());
         let (width, unit) = (bounds.width, bounds.height / 10.0);
-        let (icon, label, status, right) = (self.icon, Font::DEFAULT, &self.status, width - unit * 0.6);
+        let (icon, label, snapshot, right) =
+            (self.font_icons, Font::DEFAULT, &self.system_snapshot, width - unit * 0.6);
         let wide = std::cell::Cell::new(unit * 4.8);
         let mut put = |content: &str, at: (f32, f32), size: f32, color: Color, align: Alignment, font: Font| {
             let max_width = if align == Alignment::Left { wide.get() } else { f32::INFINITY };
@@ -128,18 +142,19 @@ impl canvas::Program<message> for deck {
                 ..Text::default()
             });
         };
-        let system = &status.system;
+        let system = &snapshot.host_metrics;
         let temperature = system.temperature.map_or(String::new(), |value| format!("   \u{f050f} {value}°C"));
         let stats = format!(
             "\u{f0ee0} {}%{temperature}   \u{f035b} {}   \u{f02ca} {}   \u{f0453} {} ms",
             system.cpu, system.memory, system.disk, system.ping
         );
-        put(&status.time, (right, unit * 1.05), unit * 0.7, foreground, Alignment::Right, label);
-        put(&status.date, (right, unit * 1.6), unit * 0.18, muted, Alignment::Right, label);
+        put(&snapshot.time, (right, unit * 1.05), unit * 0.7, foreground, Alignment::Right, label);
+        put(&snapshot.date, (right, unit * 1.6), unit * 0.18, muted, Alignment::Right, label);
         put(&stats, (right, unit * 1.95), unit * 0.1, muted, Alignment::Right, icon);
         let bar = unit * 1.2;
-        let glyphs = format!("{}   {}   {}", network_glyph(status), bluetooth_glyph(status), volume_glyph(status));
-        let x = if status.audio.is_some() { right - bar - unit * 0.12 } else { right };
+        let glyphs =
+            format!("{}   {}   {}", network_glyph(snapshot), bluetooth_glyph(snapshot), volume_glyph(snapshot));
+        let x = if snapshot.audio.is_some() { right - bar - unit * 0.12 } else { right };
         put(&glyphs, (x, unit * 2.35), unit * 0.12, muted, Alignment::Right, icon);
         let notice = self.busy.as_ref().map(|busy| format!("{busy}…")).or_else(|| self.error.clone());
         put(
@@ -150,14 +165,15 @@ impl canvas::Program<message> for deck {
             Alignment::Left,
             label,
         );
-        let root = self.root();
-        let columns = self.columns(&root);
+        let columns = self.visible_columns(self.get_category_items());
         let depth = columns.len() - 1;
-        let page = self.config.ui.modules.get(self.category).map_or("", String::as_str);
+        let categories = crate::model::config::get_configured_categories(&self.config);
+        let page = categories.get(self.category).map_or("", String::as_str);
         put(page, (unit * 0.6, unit * 0.5), unit * 0.3, foreground, Alignment::Left, label);
-        let shown = self.shown();
-        for (index, page) in self.config.ui.modules.iter().enumerate().filter(|_| depth < 2) {
-            let x = column_x(unit, bounds.width, 0, shown[1]) + (index as f32 - shown[0]) * unit * 1.4;
+        let display_position = self.display_position();
+        for (index, page) in categories.iter().enumerate().filter(|_| depth < 2) {
+            let x = column_x(unit, bounds.width, 0, display_position[1])
+                + (index as f32 - display_position[0]) * unit * 1.4;
             let focused = index == self.category;
             let color = if focused && depth == 0 {
                 foreground
@@ -167,15 +183,18 @@ impl canvas::Program<message> for deck {
                 dim
             };
             let size = unit * if focused { 0.6 } else { 0.5 };
-            put(title(self, page), (x, unit * 3.6), size, color, Alignment::Center, icon);
+            put(category_glyph(&self.config, page), (x, unit * 3.6), size, color, Alignment::Center, icon);
         }
         wide.set(unit * 4.0);
         let mut lines = Vec::new();
         for (column, items) in columns.iter().enumerate().skip(depth.saturating_sub(1)) {
-            let (x, selected) =
-                (column_x(unit, bounds.width, column, shown[1]), self.path[column].min(items.len().saturating_sub(1)));
+            let (x, selected) = (
+                column_x(unit, bounds.width, column, display_position[1]),
+                self.selected_rows[column].min(items.len().saturating_sub(1)),
+            );
             for (index, item) in items.iter().enumerate() {
-                let (y, size) = spot(unit, column, index, shown.get(column + 2).copied().unwrap_or(selected as f32));
+                let (y, size) =
+                    spot(unit, column, index, display_position.get(column + 2).copied().unwrap_or(selected as f32));
                 let color = match (index == selected, column == depth) {
                     (true, true) => foreground,
                     (true, false) => muted,
@@ -193,7 +212,7 @@ impl canvas::Program<message> for deck {
                 }
             }
         }
-        let level = status.audio.as_ref().map(|audio| if audio.muted { 0 } else { audio.volume.min(100) });
+        let level = snapshot.audio.as_ref().map(|audio| if audio.muted { 0 } else { audio.volume.min(100) });
         if let Some(level) = level {
             frame.fill_rectangle(Point::new(right - bar, unit * 2.34), Size::new(bar, unit * 0.02), dim);
             let size = Size::new(bar * level as f32 / 100.0, unit * 0.02);
@@ -205,3 +224,7 @@ impl canvas::Program<message> for deck {
         vec![frame.into_geometry()]
     }
 }
+
+#[cfg(test)]
+#[path = "view.test.rs"]
+mod tests;

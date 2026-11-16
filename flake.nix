@@ -9,7 +9,7 @@
         "x86_64-linux"
       ];
       each = f: nixpkgs.lib.genAttrs systems (system: f nixpkgs.legacyPackages.${system});
-      defaults = builtins.fromTOML (builtins.readFile ./config.toml);
+      defaults = builtins.fromTOML (builtins.readFile ./assets/config.defaults.toml);
       libraries =
         pkgs: with pkgs; [
           fontconfig
@@ -27,13 +27,15 @@
         pkgs: settings:
         let
           configFile = (pkgs.formats.toml { }).generate "deck-rs-default.toml" settings;
-          fonts = "${pkgs.nerd-fonts.symbols-only}/share/fonts/truetype/NerdFonts/Symbols";
         in
         pkgs.rustPlatform.buildRustPackage {
           pname = "deck-rs";
           version = (pkgs.lib.importTOML ./Cargo.toml).package.version;
           src = ./.;
           cargoLock.lockFile = ./Cargo.lock;
+          postPatch = ''
+            cp ${configFile} assets/config.defaults.toml
+          '';
           nativeBuildInputs = [
             pkgs.makeWrapper
             pkgs.pkg-config
@@ -42,9 +44,7 @@
           passthru.settings = settings;
           postInstall = ''
             wrapProgram $out/bin/deck-rs \
-              --prefix LD_LIBRARY_PATH : ${pkgs.lib.makeLibraryPath (libraries pkgs)} \
-              --set-default DECK_DEFAULT_CONFIG ${configFile} \
-              --set-default DECK_FONT ${fonts}/SymbolsNerdFontMono-Regular.ttf
+              --prefix LD_LIBRARY_PATH : ${pkgs.lib.makeLibraryPath (libraries pkgs)}
           '';
         };
       settingsPackage = pkgs: settings: mkPackage pkgs (pkgs.lib.recursiveUpdate defaults settings);

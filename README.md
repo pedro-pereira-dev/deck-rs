@@ -4,6 +4,18 @@ Fullscreen TV launcher built with [iced](https://iced.rs), laid out like the Pla
 horizontal row of categories with the focused category's items listed vertically beneath it. Controlled by
 keyboard, remote, gamepad or mouse.
 
+## Architecture
+
+The source is organized around an MVC-style boundary adapted to Iced's event loop:
+
+- `src/model/` contains configuration, status snapshots, menu data, actions and system services.
+- `src/controller/` handles application state, navigation, input messages and side effects.
+- `src/view/` renders the current state and translates pointer interactions into controller messages.
+- `src/main.rs` wires the model, controller and view into the Iced application.
+
+The model does not depend on Iced. The view reads state and emits messages; the controller applies those messages
+and schedules model/service work.
+
 ## Controls
 
 | Action | Keyboard / remote       | Gamepad           |
@@ -21,12 +33,12 @@ bluetooth state with connected devices.
 
 ## Configuration
 
-Defaults live in `config.toml` and are embedded in the binary. Settings are layered in this order, later
-files overriding earlier ones (tables merge, arrays replace):
+Defaults live in `assets/config.defaults.toml` and are embedded in the binary. Nix package settings are baked
+into that embedded file when the package is built. The user configuration is layered over those defaults
+(tables merge, arrays replace):
 
-1. the embedded `config.toml`
-2. `DECK_DEFAULT_CONFIG`, set by the Nix package to its baked-in settings
-3. `DECK_CONFIG`, or `$XDG_CONFIG_HOME/deck-rs/config.toml` when unset
+1. the embedded `assets/config.defaults.toml` (including Nix package settings, if configured)
+2. `DECK_CONFIG`, or `$XDG_CONFIG_HOME/deck-rs/config.toml` when unset
 
 ```toml
 [[app]]
@@ -36,39 +48,31 @@ env = { GDK_BACKEND = "wayland,x11" }
 icon = "\U000F04D3"
 name = "steam"
 
-[network]
-backend = "iwd"
-
 [ui]
 background = "/path/to/wallpaper.png"
 favorites = ["steam"]
 font = "/path/to/your-font.ttf"
 font_family = "Symbols Nerd Font Mono"
 icons = { games = "\U000F0297" }
-modules = ["home", "favorites", "games", "settings", "power"]
+categories = ["games"]
 ping = "9.9.9.9"
-sound = "/path/to/nav.wav"
+navigation_sound = "/path/to/nav.wav"
 ```
 
-`[ui].modules` enables categories and sets their order; favorites is focused at start. `home`, `favorites`,
-`settings` and `power` are built in; any other name lists the `[[app]]` entries with that `category`, using
-the glyph from `[ui].icons`. `favorites` names apps from any category and always ends with suspend. An empty
-`background` is black and an empty `sound` plays the embedded click through `pw-play` or `paplay`.
+`Home` and `Favorites` are always shown first, followed by configured extra categories, then `Settings` and
+`Power`; Favorites is focused at startup. `[ui].categories` adds app categories between Favorites and Settings
+and cannot remove or reorder the built-ins. Category matching and duplicate filtering are case-insensitive. Each
+extra category lists the `[[app]]` entries with that `category`, using its glyph from `[ui].icons`. `favorites`
+names apps from any category and always ends with suspend. The default font and sound use the bundled assets; an empty
+`background` is black and an empty `navigation_sound` uses the embedded click through `pw-play` or `paplay`.
 
-| Section        | Backends           |
-| -------------- | ------------------ |
-| `[audio]`      | `wpctl`, `pactl`   |
-| `[bluetooth]`  | `bluez`            |
-| `[brightness]` | `logind`           |
-| `[network]`    | `iwd`              |
-| `[power]`      | `logind`           |
-| `[profile]`    | `ppd`              |
+System controls are detected automatically. Audio controls appear when `wpctl` or `pactl` is installed;
+Bluetooth, Wi-Fi, power, brightness, and power-profile controls appear when their supported system services or
+devices are available. No backend selection is needed in the configuration. For Wi-Fi controls, enable iwd and
+persist `/var/lib/iwd`.
 
-`auto` selects a detected backend and `none` disables the module. A module only appears when its D-Bus
-service, executable or backlight device is present. For iwd, enable the service and persist `/var/lib/iwd`.
-
-The Symbols Nerd Font Mono icon font is embedded in Cargo builds; Nix packages pass it through `DECK_FONT`.
-Set `[ui].font` to a replacement font file and `[ui].font_family` to its family name. The clock uses `date`.
+The Symbols Nerd Font Mono icon font is bundled with the application. Set `[ui].font` to a replacement font
+file and `[ui].font_family` to its family name. The clock uses `date`.
 
 No apps are configured by default.
 
@@ -79,7 +83,8 @@ No apps are configured by default.
 - [just](https://just.systems), or use the one provided by the development shell.
 
 Recipes run through `nix develop` automatically, or directly when already inside the development shell. Nix
-flakes only see git-tracked files, so keep `flake.nix`, `flake.lock`, `config.toml` and the font asset tracked.
+flakes only see git-tracked files, so keep `flake.nix`, `flake.lock`, `assets/config.defaults.toml` and
+the font asset tracked.
 
 ## Usage
 
@@ -137,7 +142,6 @@ The flake exports `packages.<system>.default`, `nixosModules.default` and `homeM
         {
           programs.deck-rs = {
             enable = true;
-            settings.network.backend = "iwd";
           };
         }
       ];

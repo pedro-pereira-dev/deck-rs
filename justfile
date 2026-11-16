@@ -1,5 +1,5 @@
 develop := "nix --extra-experimental-features 'flakes nix-command' develop --command"
-deck := "DECK_DEFAULT_CONFIG='" + env("DECK_DEFAULT_CONFIG", "") + "' DECK_CONFIG='" + env("DECK_CONFIG", "") + "'"
+deck := "DECK_CONFIG='" + env("DECK_CONFIG", "") + "'"
 delay := env("DELAY", "3")
 nix := if env("IN_NIX_SHELL", "") == "" { develop } else { "" }
 profile := env("PROFILE", "dev")
@@ -71,5 +71,5 @@ test *args:
     {{ nix }} cargo test {{ args }}
 
 watch *args:
-    {{ nix }} watchexec --restart --watch src --watch config.toml --watch assets --watch Cargo.toml -- \
+    {{ nix }} watchexec --restart --watch src --watch assets --watch Cargo.toml -- \
         cargo run --profile {{ profile }} {{ args }}
