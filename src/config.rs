@@ -36,7 +36,7 @@ pub struct configuration_ui {
 }
 
 const default_categories: [&str; 4] = ["Home", "Favorites", "Settings", "Power"];
-const default_configuration_file_path: &str = include_str!("../../assets/config.defaults.toml");
+const default_configuration_file_path: &str = include_str!("../assets/config.defaults.toml");
 
 fn get_path_from_environment_variable(name: &str) -> Option<PathBuf> {
     std::env::var_os(name).filter(|value| !value.is_empty()).map(Into::into)
@@ -99,14 +99,14 @@ impl configuration_ui {
         (!self.font.is_empty())
             .then(|| std::fs::read(&self.font).ok())
             .flatten()
-            .unwrap_or_else(|| include_bytes!("../../assets/SymbolsNerdFontMono-Regular.ttf").to_vec())
+            .unwrap_or_else(|| include_bytes!("../assets/SymbolsNerdFontMono-Regular.ttf").to_vec())
     }
 
     pub fn get_navigation_sound(&self) -> Vec<u8> {
         (!self.navigation_sound.is_empty())
             .then(|| std::fs::read(&self.navigation_sound).ok())
             .flatten()
-            .unwrap_or_else(|| include_bytes!("../../assets/nav.wav").to_vec())
+            .unwrap_or_else(|| include_bytes!("../assets/nav.wav").to_vec())
     }
 }
 

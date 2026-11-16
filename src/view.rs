@@ -1,6 +1,5 @@
-use crate::controller::deck::deck;
-use crate::controller::messages::{message, nav};
-use crate::model::menu::{bluetooth_glyph, category_glyph, check, network_glyph, volume_glyph};
+use crate::app::{deck, message, nav};
+use crate::menu::{bluetooth_glyph, category_glyph, check, network_glyph, volume_glyph};
 use iced::alignment::Vertical;
 use iced::mouse::{Button, ScrollDelta};
 use iced::widget::canvas::{self, Action, Event, Frame, Geometry, Text};
@@ -10,7 +9,7 @@ use iced::{Color, ContentFit, Element, Font, Length, Point, Rectangle, Renderer,
 pub const background: Color = Color::BLACK;
 const dim: Color = Color::from_rgba(1.0, 1.0, 1.0, 0.15);
 pub const foreground: Color = Color::WHITE;
-const muted: Color = Color::from_rgba(1.0, 1.0, 1.0, 0.6);
+const subdued: Color = Color::from_rgba(1.0, 1.0, 1.0, 0.6);
 
 // use the configured image as a backdrop, with the canvas drawing the interface.
 pub fn view(deck: &deck) -> Element<'_, message> {
@@ -69,12 +68,12 @@ impl canvas::Program<message> for deck {
         }
         let point = cursor.position_in(bounds)?;
         let unit = bounds.height / 10.0;
-        let display_position = self.display_position();
+        let display_position = self.get_display_position();
         let message = match event {
             Event::Mouse(mouse::Event::ButtonPressed(Button::Left)) => {
-                let columns = self.visible_columns(self.get_category_items());
+                let columns = self.get_visible_columns(self.get_category_items());
                 let depth = columns.len() - 1;
-                let category = (0..crate::model::config::get_configured_categories(&self.config).len())
+                let category = (0..crate::config::get_configured_categories(&self.config).len())
                     .filter(|_| depth < 2)
                     .find(|index| {
                         let x = column_x(unit, bounds.width, 0, display_position[1])
@@ -149,14 +148,14 @@ impl canvas::Program<message> for deck {
             system.cpu, system.memory, system.disk, system.ping
         );
         put(&snapshot.time, (right, unit * 1.05), unit * 0.7, foreground, Alignment::Right, label);
-        put(&snapshot.date, (right, unit * 1.6), unit * 0.18, muted, Alignment::Right, label);
-        put(&stats, (right, unit * 1.95), unit * 0.1, muted, Alignment::Right, icon);
+        put(&snapshot.date, (right, unit * 1.6), unit * 0.18, subdued, Alignment::Right, label);
+        put(&stats, (right, unit * 1.95), unit * 0.1, subdued, Alignment::Right, icon);
         let bar = unit * 1.2;
         let glyphs =
             format!("{}   {}   {}", network_glyph(snapshot), bluetooth_glyph(snapshot), volume_glyph(snapshot));
         let x = if snapshot.audio.is_some() { right - bar - unit * 0.12 } else { right };
-        put(&glyphs, (x, unit * 2.35), unit * 0.12, muted, Alignment::Right, icon);
-        let notice = self.busy.as_ref().map(|busy| format!("{busy}…")).or_else(|| self.error.clone());
+        put(&glyphs, (x, unit * 2.35), unit * 0.12, subdued, Alignment::Right, icon);
+        let notice = self.busy_label.as_ref().map(|busy| format!("{busy}…")).or_else(|| self.error_text.clone());
         put(
             &notice.unwrap_or_default(),
             (unit * 0.6, bounds.height - unit * 0.8),
@@ -165,12 +164,12 @@ impl canvas::Program<message> for deck {
             Alignment::Left,
             label,
         );
-        let columns = self.visible_columns(self.get_category_items());
+        let columns = self.get_visible_columns(self.get_category_items());
         let depth = columns.len() - 1;
-        let categories = crate::model::config::get_configured_categories(&self.config);
+        let categories = crate::config::get_configured_categories(&self.config);
         let page = categories.get(self.category).map_or("", String::as_str);
         put(page, (unit * 0.6, unit * 0.5), unit * 0.3, foreground, Alignment::Left, label);
-        let display_position = self.display_position();
+        let display_position = self.get_display_position();
         for (index, page) in categories.iter().enumerate().filter(|_| depth < 2) {
             let x = column_x(unit, bounds.width, 0, display_position[1])
                 + (index as f32 - display_position[0]) * unit * 1.4;
@@ -178,7 +177,7 @@ impl canvas::Program<message> for deck {
             let color = if focused && depth == 0 {
                 foreground
             } else if focused {
-                muted
+                subdued
             } else {
                 dim
             };
@@ -197,7 +196,7 @@ impl canvas::Program<message> for deck {
                     spot(unit, column, index, display_position.get(column + 2).copied().unwrap_or(selected as f32));
                 let color = match (index == selected, column == depth) {
                     (true, true) => foreground,
-                    (true, false) => muted,
+                    (true, false) => subdued,
                     _ => dim,
                 };
                 let checked = item.value == check;
@@ -208,11 +207,11 @@ impl canvas::Program<message> for deck {
                     lines.push((x + unit * 0.5, y + size * 0.08, measure(&item.label, size * 0.5).min(unit * 4.0)));
                 }
                 if !checked && index == selected {
-                    put(&item.value, (x + unit * 0.5, y + size * 0.15), size * 0.35, muted, Alignment::Left, label);
+                    put(&item.value, (x + unit * 0.5, y + size * 0.15), size * 0.35, subdued, Alignment::Left, label);
                 }
             }
         }
-        let level = snapshot.audio.as_ref().map(|audio| if audio.muted { 0 } else { audio.volume.min(100) });
+        let level = snapshot.audio.as_ref().map(|audio| if audio.is_muted { 0 } else { audio.volume.min(100) });
         if let Some(level) = level {
             frame.fill_rectangle(Point::new(right - bar, unit * 2.34), Size::new(bar, unit * 0.02), dim);
             let size = Size::new(bar * level as f32 / 100.0, unit * 0.02);

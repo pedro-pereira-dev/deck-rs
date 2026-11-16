@@ -1,5 +1,5 @@
-use crate::model::config::configuration;
-use crate::model::services::{self, audio, bluetooth, network, power};
+use crate::config::configuration;
+use crate::system::{self, audio, bluetooth, power, wifi};
 use std::fs::{DirEntry, read_to_string};
 use std::sync::Arc;
 
@@ -36,11 +36,11 @@ pub struct system_snapshot {
     pub date: String,
     pub active_network_interface: String,
     pub network_link: link,
-    pub power_available: bool,
+    pub is_power_available: bool,
     pub power_profile: Option<String>,
     pub host_metrics: host_metrics,
     pub time: String,
-    pub wifi: Option<network::wifi>,
+    pub wifi: Option<wifi::wifi>,
 }
 
 // query independent status providers concurrently to keep refreshes responsive.
@@ -52,7 +52,7 @@ pub async fn collect_system_snapshot(config: Arc<configuration>) -> system_snaps
         run_command_and_capture_stdout("date", &["+%H:%M|%A, %-d of %B %Y"]),
         power::is_login_manager_available(),
         power::query_power_profile(),
-        network::query_wifi_state(),
+        wifi::query_wifi_state(),
         collect_host_metrics(&config.ui.ping),
     );
     let (time, date) = clock.split_once('|').unwrap_or_default();
@@ -66,7 +66,7 @@ pub async fn collect_system_snapshot(config: Arc<configuration>) -> system_snaps
         date,
         host_metrics,
         network_link,
-        power_available,
+        is_power_available: power_available,
         power_profile,
         time,
         wifi,
@@ -75,7 +75,7 @@ pub async fn collect_system_snapshot(config: Arc<configuration>) -> system_snaps
 
 // run a system command and discard surrounding whitespace from its output.
 async fn run_command_and_capture_stdout(program: &str, args: &[&str]) -> String {
-    services::run_command_and_capture_stdout(program, args).await.trim().to_owned()
+    system::run_command_and_capture_stdout(program, args).await.trim().to_owned()
 }
 
 // iterate entries in a system directory, treating inaccessible directories as empty.
@@ -165,7 +165,7 @@ async fn collect_host_metrics(host: &str) -> host_metrics {
 }
 
 #[cfg(test)]
-#[path = "status.test.rs"]
+#[path = "host.test.rs"]
 mod tests;
 
 // identify the first active physical interface and whether it is wireless.

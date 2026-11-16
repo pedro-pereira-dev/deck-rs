@@ -45,7 +45,7 @@ fn get_font_reads_the_configured_font_file() {
 
 #[test]
 fn get_font_falls_back_to_the_bundled_font_when_path_is_empty_or_missing() {
-    let bundled_font = include_bytes!("../../assets/SymbolsNerdFontMono-Regular.ttf");
+    let bundled_font = include_bytes!("../assets/SymbolsNerdFontMono-Regular.ttf");
     let empty_path = configuration_ui_with_font(String::new());
     let missing_path = configuration_ui_with_font("missing-font-file.ttf".into());
 
@@ -69,7 +69,7 @@ fn get_navigation_sound_reads_the_configured_sound_file() {
 
 #[test]
 fn get_navigation_sound_falls_back_to_the_bundled_sound_when_path_is_empty_or_missing() {
-    let bundled_sound = include_bytes!("../../assets/nav.wav");
+    let bundled_sound = include_bytes!("../assets/nav.wav");
     let empty_path = configuration_ui_with_font(String::new());
     let mut missing_path = configuration_ui_with_font(String::new());
     missing_path.navigation_sound = "missing-sound-file.wav".into();

@@ -6,28 +6,27 @@ fn deck() -> super::deck {
     deck_with_snapshot(Arc::default())
 }
 
-fn deck_with_snapshot(system_snapshot: Arc<crate::model::status::system_snapshot>) -> super::deck {
-    let mut config: crate::model::config::configuration =
-        toml::from_str(include_str!("../../assets/config.defaults.toml")).unwrap();
+fn deck_with_snapshot(system_snapshot: Arc<crate::system::host::system_snapshot>) -> super::deck {
+    let mut config: crate::config::configuration =
+        toml::from_str(include_str!("../assets/config.defaults.toml")).unwrap();
     config.ui.categories = vec!["games".into()];
     let running = HashSet::new();
     let menu_items = super::build_configured_menu_items(&config, &system_snapshot, &running);
 
     super::deck {
-        busy: None,
+        busy_label: None,
         category: 1,
         config: Arc::new(config),
-        error: None,
+        error_text: None,
         font_icons: iced::Font::DEFAULT,
         menu_items,
         selected_rows: vec![0],
-        selected_row_by_category: vec![0; 5],
-        running,
-        animated_position: Vec::new(),
-        last_animation_frame: None,
+        remembered_rows: vec![0; 5],
+        running_apps: running,
         last_pointer_activity: None,
         navigation_sound: PathBuf::new(),
         system_snapshot,
+        slide: super::slide::default(),
     }
 }
 
@@ -54,9 +53,9 @@ fn navigation_clamps_categories_and_rows() {
 
 #[test]
 fn selecting_a_settings_item_opens_its_submenu() {
-    let system_snapshot = Arc::new(crate::model::status::system_snapshot {
-        audio: Some(crate::model::services::audio::audio {
-            muted: false,
+    let system_snapshot = Arc::new(crate::system::host::system_snapshot {
+        audio: Some(crate::system::audio::audio {
+            is_muted: false,
             sinks: Vec::new(),
             sources: Vec::new(),
             tool: "wpctl",
@@ -74,20 +73,43 @@ fn selecting_a_settings_item_opens_its_submenu() {
 }
 
 #[test]
-fn menu_items_stay_static_after_later_system_snapshots() {
+fn menu_items_refresh_after_later_system_snapshots() {
     let mut deck = deck();
     deck.menu_items.clear();
-    drop(deck.update(super::message::snapshot(Arc::new(crate::model::status::system_snapshot {
-        power_available: true,
+    drop(deck.update(super::message::snapshot(Arc::new(crate::system::host::system_snapshot {
+        is_power_available: true,
         ..Default::default()
     }))));
     let initial_power_items = deck.menu_items[4].iter().map(|item| item.label.clone()).collect::<Vec<_>>();
 
-    drop(deck.update(super::message::snapshot(Arc::new(crate::model::status::system_snapshot::default()))));
+    drop(deck.update(super::message::snapshot(Arc::new(crate::system::host::system_snapshot::default()))));
 
     let current_power_items = deck.menu_items[4].iter().map(|item| item.label.clone()).collect::<Vec<_>>();
     assert_eq!(initial_power_items, ["power off", "reboot", "exit session", "suspend"]);
-    assert_eq!(current_power_items, initial_power_items);
+    assert_eq!(initial_power_items, ["power off", "reboot", "exit session", "suspend"]);
+    assert_eq!(current_power_items, ["suspend"]);
+}
+
+#[test]
+fn refreshed_menus_clamp_removed_items_and_submenus() {
+    let system_snapshot = Arc::new(crate::system::host::system_snapshot {
+        audio: Some(crate::system::audio::audio {
+            is_muted: false,
+            sinks: Vec::new(),
+            sources: Vec::new(),
+            tool: "wpctl",
+            volume: 35,
+        }),
+        ..Default::default()
+    });
+    let mut deck = deck_with_snapshot(system_snapshot);
+    deck.category = 3;
+    deck.selected_rows = vec![1, 10];
+
+    drop(deck.update(super::message::snapshot(Arc::default())));
+
+    assert_eq!(deck.selected_rows, [0]);
+    assert_eq!(deck.remembered_rows[deck.category], 0);
 }
 
 #[test]

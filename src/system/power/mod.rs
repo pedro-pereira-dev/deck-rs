@@ -59,11 +59,11 @@ pub async fn set_profile(profile: String) -> Result<(), String> {
 
 // read the first backlight device's current and maximum brightness values.
 fn backlight() -> Option<(String, u64, u64)> {
-    let entry = crate::model::status::directory_entries("/sys/class/backlight").next()?;
+    let entry = crate::system::host::directory_entries("/sys/class/backlight").next()?;
     let read = |file| std::fs::read_to_string(entry.path().join(file)).ok()?.trim().parse().ok();
     Some((entry.file_name().to_string_lossy().into_owned(), read("brightness")?, read("max_brightness")?))
 }
 
 #[cfg(test)]
-#[path = "power.test.rs"]
+#[path = "test.rs"]
 mod tests;

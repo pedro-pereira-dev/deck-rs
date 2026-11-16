@@ -27,7 +27,7 @@ pub struct device {
 pub struct bluetooth {
     pub adapter_object_path: String,
     pub devices: Vec<device>,
-    pub powered: bool,
+    pub is_powered: bool,
 }
 
 fn device_state(connected: Option<bool>, paired: Option<bool>) -> state {
@@ -74,12 +74,12 @@ pub async fn query_bluetooth_state() -> Option<bluetooth> {
     Some(bluetooth {
         adapter_object_path: object_path.to_string(),
         devices,
-        powered: property_value(adapter_properties, "Powered").unwrap_or(false),
+        is_powered: property_value(adapter_properties, "Powered").unwrap_or(false),
     })
 }
 
 #[cfg(test)]
-#[path = "bluetooth.test.rs"]
+#[path = "test.rs"]
 mod tests;
 
 // perform adapter discovery, power, pairing, connection, and removal operations.

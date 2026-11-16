@@ -6,15 +6,19 @@ keyboard, remote, gamepad or mouse.
 
 ## Architecture
 
-The source is organized around an MVC-style boundary adapted to Iced's event loop:
+The source is organized by responsibility:
 
-- `src/model/` contains configuration, status snapshots, menu data, actions and system services.
-- `src/controller/` handles application state, navigation, input messages and side effects.
-- `src/view/` renders the current state and translates pointer interactions into controller messages.
-- `src/main.rs` wires the model, controller and view into the Iced application.
+- `src/app.rs` owns Iced application state, navigation, updates and subscriptions.
+- `src/input.rs` translates keyboard and gamepad events into navigation messages.
+- `src/menu.rs` builds app, status and system-control menus.
+- `src/view.rs` draws the interface and translates mouse events into the same messages.
+- `src/config.rs` loads defaults and user settings.
+- `src/system/` queries host and services, performs actions, and launches processes.
+- `src/main.rs` starts the application.
 
-The model does not depend on Iced. The view reads state and emits messages; the controller applies those messages
-and schedules model/service work.
+System queries run concurrently when a snapshot is refreshed. Menus are rebuilt from each new snapshot and
+selection is clamped to available rows. Menu movement uses a short 120 fps slide; no animation frames are
+scheduled when the target position has been reached.
 
 ## Controls
 

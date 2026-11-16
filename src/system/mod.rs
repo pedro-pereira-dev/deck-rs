@@ -1,0 +1,55 @@
+pub mod action;
+pub mod audio;
+pub mod bluetooth;
+pub mod host;
+pub mod power;
+pub mod process;
+pub mod wifi;
+
+pub mod dbus;
+use dbus::{
+    call_dbus_method, find_interface_properties, is_dbus_service_available, managed_objects, property_value,
+    set_dbus_property,
+};
+
+// run a command asynchronously and return stdout, or an empty string on failure.
+pub async fn run_command_and_capture_stdout(program: &str, args: &[&str]) -> String {
+    let output = tokio::process::Command::new(program).args(args).output().await;
+    output.map(|output| String::from_utf8_lossy(&output.stdout).into_owned()).unwrap_or_default()
+}
+
+pub fn is_executable_on_path(program: &str) -> bool {
+    std::env::var_os("PATH").is_some_and(|path| is_executable_in_directories(program, std::env::split_paths(&path)))
+}
+
+fn is_executable_in_directories(program: &str, paths: impl IntoIterator<Item = std::path::PathBuf>) -> bool {
+    paths.into_iter().any(|directory| directory.join(program).is_file())
+}
+
+mod tests {
+    #[test]
+    fn path_lookup_checks_each_candidate_directory() {
+        let root = std::env::temp_dir().join(format!("deck-rs-path-test-{}", std::process::id()));
+        let first = root.join("first");
+        let second = root.join("second");
+        std::fs::create_dir_all(&first).unwrap();
+        std::fs::create_dir_all(&second).unwrap();
+        std::fs::write(first.join("deck-rs-test-bin"), "first").unwrap();
+
+        assert!(super::is_executable_in_directories("deck-rs-test-bin", [second.clone(), first.clone()]));
+        assert!(!super::is_executable_in_directories("deck-rs-missing-bin", [first, second]));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+}
+
+pub async fn perform_action(action: crate::system::action::action) -> Result<(), String> {
+    use crate::system::action::action;
+    match action {
+        action::audio(args) => audio::run_audio_command(args).await,
+        action::bluetooth(method, path) => bluetooth::perform_bluetooth_action(method, path).await,
+        action::brightness(level) => power::set_brightness(level).await,
+        action::network(method, path) => wifi::perform_wifi_action(method, path).await,
+        action::power(method) => power::perform_power_action(method).await,
+        action::profile(profile) => power::set_profile(profile).await,
+    }
+}

@@ -1,4 +1,4 @@
-use crate::controller::messages::{message, nav};
+use crate::app::{message, nav};
 use iced::futures::SinkExt;
 use iced::keyboard::{self, Key, key::Named};
 use iced::{Event, event};

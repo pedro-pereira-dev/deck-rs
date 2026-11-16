@@ -11,7 +11,7 @@ const station: &str = "net.connman.iwd.Station";
 
 #[derive(Clone)]
 pub struct network {
-    pub active: bool,
+    pub is_active: bool,
     pub object_path: String,
     pub signal: usize,
     pub ssid: String,
@@ -21,7 +21,7 @@ pub struct network {
 pub struct wifi {
     pub networks: Vec<network>,
     pub adapter_object_path: String,
-    pub powered: bool,
+    pub is_powered: bool,
 }
 
 fn networks(
@@ -33,7 +33,7 @@ fn networks(
         .into_iter()
         .take(8)
         .map(|(network, strength)| network {
-            active: connected.as_ref() == Some(&network),
+            is_active: connected.as_ref() == Some(&network),
             signal: signal(strength),
             ssid: objects
                 .get(&network)
@@ -64,7 +64,7 @@ pub async fn query_wifi_state() -> Option<wifi> {
     let powered = find_interface_properties(interfaces, device)
         .and_then(|properties| property_value(properties, "Powered"))
         .unwrap_or(false);
-    Some(wifi { networks, adapter_object_path: object_path.to_string(), powered })
+    Some(wifi { networks, adapter_object_path: object_path.to_string(), is_powered: powered })
 }
 
 // toggle wi-fi power or invoke the requested station or network operation.
@@ -82,5 +82,5 @@ fn signal(centi_dbm: i16) -> usize {
 }
 
 #[cfg(test)]
-#[path = "network.test.rs"]
+#[path = "wifi.test.rs"]
 mod tests;

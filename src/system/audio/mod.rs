@@ -3,14 +3,14 @@ use tokio::process::Command;
 
 #[derive(Clone)]
 pub struct sink {
-    pub default: bool,
+    pub is_default: bool,
     pub id: String,
     pub name: String,
 }
 
 #[derive(Clone)]
 pub struct audio {
-    pub muted: bool,
+    pub is_muted: bool,
     pub sinks: Vec<sink>,
     pub sources: Vec<sink>,
     pub tool: &'static str,
@@ -19,21 +19,21 @@ pub struct audio {
 
 // create backend-specific command arguments for audio controls.
 impl audio {
-    pub fn mute(&self) -> Vec<String> {
+    pub fn get_mute_command(&self) -> Vec<String> {
         match self.tool {
             "pactl" => args(&["pactl", "set-sink-mute", "@DEFAULT_SINK@", "toggle"]),
             _ => args(&["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"]),
         }
     }
 
-    pub fn select(&self, id: &str, input: bool) -> Vec<String> {
+    pub fn get_device_command(&self, id: &str, is_input: bool) -> Vec<String> {
         match self.tool {
-            "pactl" => args(&["pactl", if input { "set-default-source" } else { "set-default-sink" }, id]),
+            "pactl" => args(&["pactl", if is_input { "set-default-source" } else { "set-default-sink" }, id]),
             _ => args(&["wpctl", "set-default", id]),
         }
     }
 
-    pub fn volume(&self, level: u32) -> Vec<String> {
+    pub fn get_volume_command(&self, level: u32) -> Vec<String> {
         match self.tool {
             "pactl" => args(&["pactl", "set-sink-volume", "@DEFAULT_SINK@", &format!("{level}%")]),
             _ => args(&["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", &format!("{level}%")]),
@@ -57,7 +57,7 @@ pub async fn query_audio_state() -> Option<audio> {
             run_command_and_capture_stdout(tool, &["list", "short", "sources"]),
         );
         audio {
-            muted: muted.contains("yes"),
+            is_muted: muted.contains("yes"),
             sinks: pactl_sinks(&sinks, &info, "Sink"),
             sources: pactl_sinks(&sources, &info, "Source")
                 .into_iter()
@@ -76,7 +76,7 @@ pub async fn query_audio_state() -> Option<audio> {
             run_command_and_capture_stdout(tool, &["status"])
         );
         audio {
-            muted: volume.contains("MUTED"),
+            is_muted: volume.contains("MUTED"),
             sinks: wpctl_sinks(&status, "Sinks:"),
             sources: wpctl_sinks(&status, "Sources:"),
             tool,
@@ -101,7 +101,7 @@ fn pactl_sinks(text: &str, info: &str, kind: &str) -> Vec<sink> {
     let default = info.lines().find_map(|line| line.strip_prefix(prefix.as_str())).unwrap_or_default();
     text.lines()
         .filter_map(|line| line.split_whitespace().nth(1))
-        .map(|name| sink { default: name == default, id: name.into(), name: name.into() })
+        .map(|name| sink { is_default: name == default, id: name.into(), name: name.into() })
         .collect()
 }
 
@@ -114,11 +114,15 @@ fn wpctl_sinks(text: &str, section: &str) -> Vec<sink> {
         .take_while(|line| !line.is_empty())
         .filter_map(|line| {
             let (id, name) = line.trim_start_matches(['*', ' ']).split_once(". ")?;
-            Some(sink { default: line.starts_with('*'), id: id.into(), name: name.split(" [").next()?.trim().into() })
+            Some(sink {
+                is_default: line.starts_with('*'),
+                id: id.into(),
+                name: name.split(" [").next()?.trim().into(),
+            })
         })
         .collect()
 }
 
 #[cfg(test)]
-#[path = "audio.test.rs"]
+#[path = "test.rs"]
 mod tests;

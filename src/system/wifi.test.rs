@@ -23,8 +23,8 @@ fn network_list_marks_the_connected_path_uses_fallback_names_and_caps_results() 
     let networks = super::networks(entries, connected, &Default::default());
 
     assert_eq!(networks.len(), 8);
-    assert!(!networks[0].active);
-    assert!(networks[1].active);
+    assert!(!networks[0].is_active);
+    assert!(networks[1].is_active);
     assert_eq!(networks[1].ssid, "unknown");
     assert_eq!(networks[1].signal, 2);
 }
