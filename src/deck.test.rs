@@ -11,7 +11,7 @@ fn deck_with_snapshot(system_snapshot: Arc<crate::system::host::system_snapshot>
         toml::from_str(include_str!("../assets/config.defaults.toml")).unwrap();
     config.ui.categories = vec!["games".into()];
     let running = HashSet::new();
-    let menu_items = super::build_configured_menu_items(&config, &system_snapshot, &running);
+    let menu_items = super::get_category_selection_items(&config, &system_snapshot, &running);
 
     super::deck {
         busy_label: None,
@@ -33,21 +33,21 @@ fn deck_with_snapshot(system_snapshot: Arc<crate::system::host::system_snapshot>
 #[test]
 fn navigation_clamps_categories_and_rows() {
     let mut deck = deck();
-    drop(deck.apply_navigation(super::nav::down));
+    drop(deck.apply_navigation(super::navigation::down));
     assert_eq!(deck.selected_rows, [1]);
-    drop(deck.apply_navigation(super::nav::up));
+    drop(deck.apply_navigation(super::navigation::up));
     assert_eq!(deck.selected_rows, [0]);
-    drop(deck.apply_navigation(super::nav::up));
+    drop(deck.apply_navigation(super::navigation::up));
     assert_eq!(deck.selected_rows, [0]);
-    drop(deck.apply_navigation(super::nav::left));
+    drop(deck.apply_navigation(super::navigation::left));
     assert_eq!(deck.category, 0);
-    drop(deck.apply_navigation(super::nav::left));
+    drop(deck.apply_navigation(super::navigation::left));
     assert_eq!(deck.category, 0);
-    drop(deck.apply_navigation(super::nav::right));
+    drop(deck.apply_navigation(super::navigation::right));
     assert_eq!(deck.category, 1);
-    drop(deck.apply_navigation(super::nav::right));
-    drop(deck.apply_navigation(super::nav::right));
-    drop(deck.apply_navigation(super::nav::right));
+    drop(deck.apply_navigation(super::navigation::right));
+    drop(deck.apply_navigation(super::navigation::right));
+    drop(deck.apply_navigation(super::navigation::right));
     assert_eq!(deck.category, 4);
 }
 
@@ -67,7 +67,7 @@ fn selecting_a_settings_item_opens_its_submenu() {
     deck.category = 3;
     deck.selected_rows = vec![1];
 
-    drop(deck.apply_navigation(super::nav::select));
+    drop(deck.apply_navigation(super::navigation::select));
 
     assert_eq!(deck.selected_rows, [1, 0]);
 }
@@ -117,7 +117,7 @@ fn menu_navigation_returns_to_favorites() {
     let mut deck = deck();
     deck.category = 2;
 
-    drop(deck.apply_navigation(super::nav::menu));
+    drop(deck.apply_navigation(super::navigation::menu));
 
     assert_eq!(deck.category, 1);
 }

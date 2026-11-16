@@ -1,4 +1,4 @@
-use crate::deck::{deck, message, nav};
+use crate::deck::{deck, message, navigation};
 use crate::menu::{bluetooth_glyph, category_glyph, check, network_glyph, volume_glyph};
 use iced::alignment::Vertical;
 use iced::mouse::{Button, ScrollDelta};
@@ -96,14 +96,14 @@ impl canvas::Program<message> for deck {
                     _ => return None,
                 }
             }
-            Event::Mouse(mouse::Event::ButtonPressed(Button::Right)) => message::nav(nav::back),
+            Event::Mouse(mouse::Event::ButtonPressed(Button::Right)) => message::nav(navigation::back),
             Event::Mouse(mouse::Event::WheelScrolled { delta }) => {
                 let (ScrollDelta::Lines { x, y } | ScrollDelta::Pixels { x, y }) = *delta;
                 message::nav(match (x.abs() > y.abs(), x > 0.0, y > 0.0) {
-                    (true, true, _) => nav::left,
-                    (true, false, _) => nav::right,
-                    (false, _, true) => nav::up,
-                    (false, _, false) => nav::down,
+                    (true, true, _) => navigation::left,
+                    (true, false, _) => navigation::right,
+                    (false, _, true) => navigation::up,
+                    (false, _, false) => navigation::down,
                 })
             }
             _ => return None,

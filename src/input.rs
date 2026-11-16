@@ -1,23 +1,23 @@
-use crate::deck::{message, nav};
+use crate::deck::{message, navigation};
 use iced::futures::SinkExt;
 use iced::keyboard::{self, Key, key::Named};
 use iced::{Event, event};
 
-fn key_nav(key: Named) -> Option<nav> {
+fn key_nav(key: Named) -> Option<navigation> {
     Some(match key {
-        Named::ArrowDown => nav::down,
-        Named::ArrowLeft => nav::left,
-        Named::ArrowRight => nav::right,
-        Named::ArrowUp => nav::up,
-        Named::Backspace | Named::BrowserBack | Named::Escape | Named::Exit | Named::GoBack => nav::back,
-        Named::BrowserHome | Named::ContextMenu | Named::Home | Named::Power | Named::Settings => nav::menu,
-        Named::Enter | Named::Select | Named::Space => nav::select,
+        Named::ArrowDown => navigation::down,
+        Named::ArrowLeft => navigation::left,
+        Named::ArrowRight => navigation::right,
+        Named::ArrowUp => navigation::up,
+        Named::Backspace | Named::BrowserBack | Named::Escape | Named::Exit | Named::GoBack => navigation::back,
+        Named::BrowserHome | Named::ContextMenu | Named::Home | Named::Power | Named::Settings => navigation::menu,
+        Named::Enter | Named::Select | Named::Space => navigation::select,
         _ => return None,
     })
 }
 
 // convert d-pad buttons and joystick threshold crossings into navigation commands.
-fn translate(event: gilrs::EventType, stick: &mut (i8, i8)) -> Option<nav> {
+fn translate(event: gilrs::EventType, stick: &mut (i8, i8)) -> Option<navigation> {
     use gilrs::EventType;
     match event {
         EventType::ButtonPressed(button, _) => button_nav(button),
@@ -26,7 +26,7 @@ fn translate(event: gilrs::EventType, stick: &mut (i8, i8)) -> Option<nav> {
     }
 }
 
-fn axis_nav(axis: gilrs::Axis, value: f32, stick: &mut (i8, i8)) -> Option<nav> {
+fn axis_nav(axis: gilrs::Axis, value: f32, stick: &mut (i8, i8)) -> Option<navigation> {
     use gilrs::Axis;
     let direction = if value > 0.6 {
         1
@@ -36,24 +36,24 @@ fn axis_nav(axis: gilrs::Axis, value: f32, stick: &mut (i8, i8)) -> Option<nav> 
         0
     };
     let (previous, navs) = match axis {
-        Axis::LeftStickX => (&mut stick.0, [nav::left, nav::right]),
-        Axis::LeftStickY => (&mut stick.1, [nav::down, nav::up]),
+        Axis::LeftStickX => (&mut stick.0, [navigation::left, navigation::right]),
+        Axis::LeftStickY => (&mut stick.1, [navigation::down, navigation::up]),
         _ => return None,
     };
     let changed = std::mem::replace(previous, direction) != direction;
     (changed && direction != 0).then(|| navs[usize::from(direction > 0)])
 }
 
-fn button_nav(button: gilrs::Button) -> Option<nav> {
+fn button_nav(button: gilrs::Button) -> Option<navigation> {
     use gilrs::Button;
     match button {
-        Button::DPadDown => Some(nav::down),
-        Button::DPadLeft => Some(nav::left),
-        Button::DPadRight => Some(nav::right),
-        Button::DPadUp => Some(nav::up),
-        Button::East | Button::Select => Some(nav::back),
-        Button::Mode | Button::Start => Some(nav::menu),
-        Button::South => Some(nav::select),
+        Button::DPadDown => Some(navigation::down),
+        Button::DPadLeft => Some(navigation::left),
+        Button::DPadRight => Some(navigation::right),
+        Button::DPadUp => Some(navigation::up),
+        Button::East | Button::Select => Some(navigation::back),
+        Button::Mode | Button::Start => Some(navigation::menu),
+        Button::South => Some(navigation::select),
         _ => None,
     }
 }

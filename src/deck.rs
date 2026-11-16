@@ -12,7 +12,7 @@ use crate::view;
 use iced::{Font, Subscription, Task, event, time};
 
 #[derive(Clone, Copy)]
-pub enum nav {
+pub enum navigation {
     back,
     down,
     left,
@@ -30,7 +30,7 @@ pub enum message {
     idle,
     launch(usize),
     mouse,
-    nav(nav),
+    nav(navigation),
     pick { category_index: usize, selected_rows: Vec<usize> },
     run(String, action),
     snapshot(Arc<system_snapshot>),
@@ -59,11 +59,11 @@ pub struct deck {
     pub system_snapshot: Arc<system_snapshot>,
 }
 
-fn get_category_favorites_index(config: &configuration) -> usize {
+fn get_favorites_category_index(config: &configuration) -> usize {
     crate::config::get_configured_categories(config).iter().position(|category| category == "Favorites").unwrap_or(0)
 }
 
-fn build_configured_menu_items(
+fn get_category_selection_items(
     config: &configuration,
     system_snapshot: &system_snapshot,
     running_apps: &HashSet<usize>,
@@ -83,7 +83,7 @@ impl slide {
         if self.position.len() < 2 { target } else { self.position.clone() }
     }
 
-    fn advance(&mut self, target: &[f32], now: Instant) {
+    fn advance_animation_frame(&mut self, target: &[f32], now: Instant) {
         let elapsed = self.last_frame.map_or(1.0 / 120.0, |last_frame| (now - last_frame).as_secs_f32());
         let step = 1.0 - (-elapsed / 0.03).exp();
         self.position.truncate(target.len());
@@ -105,7 +105,7 @@ impl deck {
         let remembered_rows = vec![0; crate::config::get_configured_categories(&config).len()];
         let deck = deck {
             busy_label: None,
-            category: get_category_favorites_index(&config),
+            category: get_favorites_category_index(&config),
             config: config.into(),
             error_text: error,
             font_icons: configuration_font_icons,
@@ -132,7 +132,7 @@ impl deck {
             }
             message::frame(now) => {
                 let target_position = self.get_target_position();
-                self.slide.advance(&target_position, now);
+                self.slide.advance_animation_frame(&target_position, now);
             }
             message::exited(index) => {
                 self.running_apps.remove(&index);
@@ -151,7 +151,7 @@ impl deck {
                 return self.select_menu_position(category_index, vec![]);
             }
             message::pick { selected_rows, .. } if selected_rows == self.selected_rows => {
-                return self.apply_navigation(nav::select);
+                return self.apply_navigation(navigation::select);
             }
             message::pick { selected_rows, .. } => return self.select_menu_position(self.category, selected_rows),
             message::run(label, action) if self.busy_label.is_none() => {
@@ -175,7 +175,7 @@ impl deck {
     }
 
     fn rebuild_menu_items(&mut self) {
-        self.menu_items = build_configured_menu_items(&self.config, &self.system_snapshot, &self.running_apps);
+        self.menu_items = get_category_selection_items(&self.config, &self.system_snapshot, &self.running_apps);
         self.clamp_selection();
     }
 
@@ -224,7 +224,7 @@ impl deck {
     }
 
     // translate directional/select commands into menu movement or item activation.
-    fn apply_navigation(&mut self, nav: nav) -> Task<message> {
+    fn apply_navigation(&mut self, nav: navigation) -> Task<message> {
         let (depth, selected_rows, row, item_count, child_row, activation) = {
             let columns = self.get_selection_category_breadcrumb(self.get_category_items());
             let mut selected_rows = self.selected_rows[..columns.len()].to_vec();
@@ -242,25 +242,25 @@ impl deck {
         };
         let category = self.category;
         match nav {
-            nav::back if depth > 0 => self.select_menu_position(category, selected_rows[..depth].to_vec()),
-            nav::left => self.select_menu_position(category.saturating_sub(1), vec![]),
-            nav::right => self.select_menu_position(category + 1, vec![]),
-            nav::down => self.select_menu_position(
+            navigation::back if depth > 0 => self.select_menu_position(category, selected_rows[..depth].to_vec()),
+            navigation::left => self.select_menu_position(category.saturating_sub(1), vec![]),
+            navigation::right => self.select_menu_position(category + 1, vec![]),
+            navigation::down => self.select_menu_position(
                 category,
                 [&selected_rows[..depth], &[(row + 1).min(item_count.saturating_sub(1))]].concat(),
             ),
-            nav::menu => self.select_menu_position(get_category_favorites_index(&self.config), vec![]),
-            nav::select if child_row.is_some() => {
+            navigation::menu => self.select_menu_position(get_favorites_category_index(&self.config), vec![]),
+            navigation::select if child_row.is_some() => {
                 let row = child_row.unwrap_or_default();
                 self.select_menu_position(category, [&selected_rows[..], &[row]].concat())
             }
-            nav::select => activation.map_or(Task::none(), |activation| {
+            navigation::select => activation.map_or(Task::none(), |activation| {
                 self.update(match activation {
                     item_activation::launch(index) => message::launch(index),
                     item_activation::run(label, action) => message::run(label, action),
                 })
             }),
-            nav::up => {
+            navigation::up => {
                 self.select_menu_position(category, [&selected_rows[..depth], &[row.saturating_sub(1)]].concat())
             }
             _ => Task::none(),
