@@ -8,8 +8,8 @@ fn configuration_ui_with_font(font: String) -> super::configuration_ui {
         font,
         font_family: String::new(),
         icons: BTreeMap::new(),
-        ping: String::new(),
         navigation_sound: String::new(),
+        ping: String::new(),
     }
 }
 

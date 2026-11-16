@@ -1,9 +1,8 @@
-use std::collections::HashSet;
-
 use crate::config::configuration;
 use crate::system::action::action;
 use crate::system::bluetooth::state;
 use crate::system::host::{link, system_snapshot};
+use std::collections::HashSet;
 
 pub const check: &str = "\u{f012c}";
 
@@ -56,78 +55,6 @@ fn percentage_choices(
 fn toggle_item(glyph: &str, label: &str, on: bool, action: impl Fn(&'static str) -> action) -> item {
     let (value, next) = if on { ("on", "off") } else { ("off", "on") };
     menu_item(glyph, label, value, activate(label, action(next)))
-}
-
-pub fn bluetooth_glyph(status: &system_snapshot) -> &'static str {
-    if status.bluetooth.as_ref().is_some_and(|bluetooth| bluetooth.is_powered) { "\u{f00af}" } else { "\u{f00b2}" }
-}
-
-pub fn network_glyph(status: &system_snapshot) -> &'static str {
-    match status.network_link {
-        link::ethernet => "\u{f0200}",
-        link::none => "\u{f05aa}",
-        link::wireless => "\u{f05a9}",
-    }
-}
-
-pub fn volume_glyph(status: &system_snapshot) -> &'static str {
-    if status.audio.as_ref().is_some_and(|audio| audio.is_muted) { "\u{f0581}" } else { "\u{f057e}" }
-}
-
-pub fn category_glyph<'a>(config: &'a configuration, page: &'a str) -> &'a str {
-    match page {
-        "Favorites" => "\u{f04ce}",
-        "Home" => "\u{f02dc}",
-        "Power" => "\u{f0425}",
-        "Settings" => "\u{f0493}",
-        page => config.ui.icons.get(page).map_or("\u{f003b}", String::as_str),
-    }
-}
-
-// build a page's entries from settings and the latest system status.
-pub fn build_category_items(
-    config: &configuration,
-    status: &system_snapshot,
-    running_apps: &HashSet<usize>,
-    page: &str,
-) -> Vec<item> {
-    let app = |index: usize| {
-        let app = &config.app[index];
-        let state = if running_apps.contains(&index) { "running" } else { "" };
-        menu_item(&app.icon, &app.name, state, Some(item_activation::launch(index)))
-    };
-    let suspend = || menu_item("\u{f04b2}", "suspend", "", activate("suspend", action::power("Suspend")));
-    match page {
-        "Favorites" => {
-            let favorites = &config.ui.favorites;
-            let mut items: Vec<item> = favorites
-                .iter()
-                .filter_map(|name| config.app.iter().position(|app| &app.name == name))
-                .map(app)
-                .collect();
-            if items.is_empty() {
-                items.push(menu_item("\u{ea6c}", "-", "", None));
-            }
-            items.push(suspend());
-            items
-        }
-        "Home" => home_category_items(status),
-        "Power" if !status.is_power_available => vec![suspend()],
-        "Power" => [
-            ("\u{f0425}", "power off", "PowerOff"),
-            ("\u{f0709}", "reboot", "Reboot"),
-            ("\u{f0343}", "exit session", "TerminateSession"),
-        ]
-        .map(|(glyph, label, method)| menu_item(glyph, label, "", activate(label, action::power(method))))
-        .into_iter()
-        .chain([suspend()])
-        .collect(),
-        "Settings" => settings_category_items(status),
-        page => (0..config.app.len())
-            .filter(|index| config.app[*index].category.eq_ignore_ascii_case(page))
-            .map(app)
-            .collect(),
-    }
 }
 
 // turn collected machine statistics into read-only home-page rows.
@@ -279,6 +206,77 @@ fn settings_category_items(status: &system_snapshot) -> Vec<item> {
         items.push(parent_menu_item("\u{f04c5}", "power profile", profile, sub));
     }
     items
+}
+
+pub fn bluetooth_glyph(status: &system_snapshot) -> &'static str {
+    if status.bluetooth.as_ref().is_some_and(|bluetooth| bluetooth.is_powered) { "\u{f00af}" } else { "\u{f00b2}" }
+}
+
+pub fn category_glyph<'a>(config: &'a configuration, page: &'a str) -> &'a str {
+    match page {
+        "Favorites" => "\u{f04ce}",
+        "Home" => "\u{f02dc}",
+        "Power" => "\u{f0425}",
+        "Settings" => "\u{f0493}",
+        page => config.ui.icons.get(page).map_or("\u{f003b}", String::as_str),
+    }
+}
+
+pub fn network_glyph(status: &system_snapshot) -> &'static str {
+    match status.network_link {
+        link::ethernet => "\u{f0200}",
+        link::none => "\u{f05aa}",
+        link::wireless => "\u{f05a9}",
+    }
+}
+
+pub fn volume_glyph(status: &system_snapshot) -> &'static str {
+    if status.audio.as_ref().is_some_and(|audio| audio.is_muted) { "\u{f0581}" } else { "\u{f057e}" }
+}
+
+pub fn build_category_items(
+    config: &configuration,
+    status: &system_snapshot,
+    running_apps: &HashSet<usize>,
+    page: &str,
+) -> Vec<item> {
+    let app = |index: usize| {
+        let app = &config.app[index];
+        let state = if running_apps.contains(&index) { "running" } else { "" };
+        menu_item(&app.icon, &app.name, state, Some(item_activation::launch(index)))
+    };
+    let suspend = || menu_item("\u{f04b2}", "suspend", "", activate("suspend", action::power("Suspend")));
+    match page {
+        "Favorites" => {
+            let favorites = &config.ui.favorites;
+            let mut items: Vec<item> = favorites
+                .iter()
+                .filter_map(|name| config.app.iter().position(|app| &app.name == name))
+                .map(app)
+                .collect();
+            if items.is_empty() {
+                items.push(menu_item("\u{ea6c}", "-", "", None));
+            }
+            items.push(suspend());
+            items
+        }
+        "Home" => home_category_items(status),
+        "Power" if !status.is_power_available => vec![suspend()],
+        "Power" => [
+            ("\u{f0425}", "power off", "PowerOff"),
+            ("\u{f0709}", "reboot", "Reboot"),
+            ("\u{f0343}", "exit session", "TerminateSession"),
+        ]
+        .map(|(glyph, label, method)| menu_item(glyph, label, "", activate(label, action::power(method))))
+        .into_iter()
+        .chain([suspend()])
+        .collect(),
+        "Settings" => settings_category_items(status),
+        page => (0..config.app.len())
+            .filter(|index| config.app[*index].category.eq_ignore_ascii_case(page))
+            .map(app)
+            .collect(),
+    }
 }
 
 #[cfg(test)]

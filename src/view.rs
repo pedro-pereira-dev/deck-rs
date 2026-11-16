@@ -1,4 +1,4 @@
-use crate::app::{deck, message, nav};
+use crate::deck::{deck, message, nav};
 use crate::menu::{bluetooth_glyph, category_glyph, check, network_glyph, volume_glyph};
 use iced::alignment::Vertical;
 use iced::mouse::{Button, ScrollDelta};
@@ -71,7 +71,7 @@ impl canvas::Program<message> for deck {
         let display_position = self.get_display_position();
         let message = match event {
             Event::Mouse(mouse::Event::ButtonPressed(Button::Left)) => {
-                let columns = self.get_visible_columns(self.get_category_items());
+                let columns = self.get_selection_category_breadcrumb(self.get_category_items());
                 let depth = columns.len() - 1;
                 let category = (0..crate::config::get_configured_categories(&self.config).len())
                     .filter(|_| depth < 2)
@@ -164,7 +164,7 @@ impl canvas::Program<message> for deck {
             Alignment::Left,
             label,
         );
-        let columns = self.get_visible_columns(self.get_category_items());
+        let columns = self.get_selection_category_breadcrumb(self.get_category_items());
         let depth = columns.len() - 1;
         let categories = crate::config::get_configured_categories(&self.config);
         let page = categories.get(self.category).map_or("", String::as_str);

@@ -3,8 +3,8 @@ use tokio::process::Command;
 
 #[derive(Clone)]
 pub struct sink {
-    pub is_default: bool,
     pub id: String,
+    pub is_default: bool,
     pub name: String,
 }
 
@@ -17,7 +17,36 @@ pub struct audio {
     pub volume: u32,
 }
 
-// create backend-specific command arguments for audio controls.
+fn args(values: &[&str]) -> Vec<String> {
+    values.iter().map(|value| value.to_string()).collect()
+}
+
+fn pactl_sinks(text: &str, info: &str, kind: &str) -> Vec<sink> {
+    let prefix = format!("Default {kind}: ");
+    let default = info.lines().find_map(|line| line.strip_prefix(prefix.as_str())).unwrap_or_default();
+    text.lines()
+        .filter_map(|line| line.split_whitespace().nth(1))
+        .map(|name| sink { id: name.into(), is_default: name == default, name: name.into() })
+        .collect()
+}
+
+fn wpctl_sinks(text: &str, section: &str) -> Vec<sink> {
+    text.lines()
+        .skip_while(|line| !line.contains(section))
+        .skip(1)
+        .map(|line| line.trim_start_matches(|c: char| !c.is_ascii_alphanumeric() && c != '*'))
+        .take_while(|line| !line.is_empty())
+        .filter_map(|line| {
+            let (id, name) = line.trim_start_matches(['*', ' ']).split_once(". ")?;
+            Some(sink {
+                id: id.into(),
+                is_default: line.starts_with('*'),
+                name: name.split(" [").next()?.trim().into(),
+            })
+        })
+        .collect()
+}
+
 impl audio {
     pub fn get_mute_command(&self) -> Vec<String> {
         match self.tool {
@@ -39,10 +68,6 @@ impl audio {
             _ => args(&["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", &format!("{level}%")]),
         }
     }
-}
-
-fn args(values: &[&str]) -> Vec<String> {
-    values.iter().map(|value| value.to_string()).collect()
 }
 
 // read volume, mute state, and available devices from pipewire or pulseaudio tools.
@@ -89,38 +114,10 @@ pub async fn query_audio_state() -> Option<audio> {
     })
 }
 
-// execute an audio command and report unsuccessful exit statuses.
 pub async fn run_audio_command(args: Vec<String>) -> Result<(), String> {
     let (program, args) = args.split_first().ok_or("empty command")?;
     let exit_status = Command::new(program).args(args).status().await.map_err(|error| error.to_string())?;
     exit_status.success().then_some(()).ok_or(format!("{program} failed"))
-}
-
-fn pactl_sinks(text: &str, info: &str, kind: &str) -> Vec<sink> {
-    let prefix = format!("Default {kind}: ");
-    let default = info.lines().find_map(|line| line.strip_prefix(prefix.as_str())).unwrap_or_default();
-    text.lines()
-        .filter_map(|line| line.split_whitespace().nth(1))
-        .map(|name| sink { is_default: name == default, id: name.into(), name: name.into() })
-        .collect()
-}
-
-// parse the device tree printed by wpctl into selectable audio devices.
-fn wpctl_sinks(text: &str, section: &str) -> Vec<sink> {
-    text.lines()
-        .skip_while(|line| !line.contains(section))
-        .skip(1)
-        .map(|line| line.trim_start_matches(|c: char| !c.is_ascii_alphanumeric() && c != '*'))
-        .take_while(|line| !line.is_empty())
-        .filter_map(|line| {
-            let (id, name) = line.trim_start_matches(['*', ' ']).split_once(". ")?;
-            Some(sink {
-                is_default: line.starts_with('*'),
-                id: id.into(),
-                name: name.split(" [").next()?.trim().into(),
-            })
-        })
-        .collect()
 }
 
 #[cfg(test)]

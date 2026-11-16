@@ -19,14 +19,14 @@ fn deck_with_snapshot(system_snapshot: Arc<crate::system::host::system_snapshot>
         config: Arc::new(config),
         error_text: None,
         font_icons: iced::Font::DEFAULT,
+        last_pointer_activity: None,
         menu_items,
-        selected_rows: vec![0],
+        navigation_sound: PathBuf::new(),
         remembered_rows: vec![0; 5],
         running_apps: running,
-        last_pointer_activity: None,
-        navigation_sound: PathBuf::new(),
-        system_snapshot,
+        selected_rows: vec![0],
         slide: super::slide::default(),
+        system_snapshot,
     }
 }
 

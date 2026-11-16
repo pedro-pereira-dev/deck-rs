@@ -47,7 +47,6 @@ fn order_devices(devices: &mut Vec<device>) {
     devices.truncate(10);
 }
 
-// read the adapter and up to ten devices from bluez's dbus objects.
 pub async fn query_bluetooth_state() -> Option<bluetooth> {
     if !is_dbus_service_available(service).await {
         return None;
@@ -78,11 +77,6 @@ pub async fn query_bluetooth_state() -> Option<bluetooth> {
     })
 }
 
-#[cfg(test)]
-#[path = "test.rs"]
-mod tests;
-
-// perform adapter discovery, power, pairing, connection, and removal operations.
 pub async fn perform_bluetooth_action(method: &str, object_path: String) -> Result<(), String> {
     match method {
         "on" | "off" => set_dbus_property(service, &object_path, adapter, "Powered", (method == "on").into()).await,
@@ -99,3 +93,7 @@ pub async fn perform_bluetooth_action(method: &str, object_path: String) -> Resu
         method => call_dbus_method(service, &object_path, device_interface, method, &()).await,
     }
 }
+
+#[cfg(test)]
+#[path = "test.rs"]
+mod tests;

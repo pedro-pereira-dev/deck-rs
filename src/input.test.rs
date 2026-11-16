@@ -3,7 +3,7 @@ use iced::keyboard::key::Named;
 
 #[test]
 fn maps_keyboard_navigation_and_ignores_unmapped_keys() {
-    use crate::app::nav;
+    use crate::deck::nav;
     assert!(matches!(super::key_nav(Named::ArrowUp), Some(nav::up)));
     assert!(matches!(super::key_nav(Named::Escape), Some(nav::back)));
     assert!(matches!(super::key_nav(Named::Home), Some(nav::menu)));
@@ -13,7 +13,7 @@ fn maps_keyboard_navigation_and_ignores_unmapped_keys() {
 
 #[test]
 fn maps_gamepad_buttons_to_navigation() {
-    use crate::app::nav;
+    use crate::deck::nav;
     assert!(matches!(super::button_nav(Button::DPadDown), Some(nav::down)));
     assert!(matches!(super::button_nav(Button::East), Some(nav::back)));
     assert!(matches!(super::button_nav(Button::Start), Some(nav::menu)));
@@ -23,7 +23,7 @@ fn maps_gamepad_buttons_to_navigation() {
 
 #[test]
 fn joystick_only_moves_when_crossing_threshold() {
-    use crate::app::nav;
+    use crate::deck::nav;
     let mut stick = (0, 0);
     assert!(super::axis_nav(gilrs::Axis::LeftStickX, 0.5, &mut stick).is_none());
     assert!(matches!(super::axis_nav(gilrs::Axis::LeftStickX, 0.8, &mut stick), Some(nav::right)));

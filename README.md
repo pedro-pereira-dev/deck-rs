@@ -8,7 +8,7 @@ keyboard, remote, gamepad or mouse.
 
 The source is organized by responsibility:
 
-- `src/app.rs` owns Iced application state, navigation, updates and subscriptions.
+- `src/deck.rs` owns Iced application state, navigation, updates and subscriptions.
 - `src/input.rs` translates keyboard and gamepad events into navigation messages.
 - `src/menu.rs` builds app, status and system-control menus.
 - `src/view.rs` draws the interface and translates mouse events into the same messages.

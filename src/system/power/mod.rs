@@ -6,7 +6,20 @@ const profiles: &str = "net.hadess.PowerProfiles";
 const profiles_root: &str = "/net/hadess/PowerProfiles";
 const root: &str = "/org/freedesktop/login1";
 
-// ask logind to power off, reboot, suspend, or end the current session.
+fn brightness_percent(current: u64, maximum: u64) -> u32 {
+    (current.min(maximum) * 100 / maximum.max(1)) as u32
+}
+
+fn brightness_level(maximum: u64, level: u32) -> u32 {
+    (maximum * u64::from(level.min(100)) / 100) as u32
+}
+
+fn backlight() -> Option<(String, u64, u64)> {
+    let entry = crate::system::host::directory_entries("/sys/class/backlight").next()?;
+    let read = |file| std::fs::read_to_string(entry.path().join(file)).ok()?.trim().parse().ok();
+    Some((entry.file_name().to_string_lossy().into_owned(), read("brightness")?, read("max_brightness")?))
+}
+
 pub async fn perform_power_action(method: &str) -> Result<(), String> {
     if method == "TerminateSession" {
         let session = std::env::var("XDG_SESSION_ID").unwrap_or_default();
@@ -24,15 +37,6 @@ pub async fn query_brightness() -> Option<u32> {
     is_login_manager_available().await.then_some(brightness_percent(current, maximum))
 }
 
-fn brightness_percent(current: u64, maximum: u64) -> u32 {
-    (current.min(maximum) * 100 / maximum.max(1)) as u32
-}
-
-fn brightness_level(maximum: u64, level: u32) -> u32 {
-    (maximum * u64::from(level.min(100)) / 100) as u32
-}
-
-// read the active power profile from the power-profiles-daemon service.
 pub async fn query_power_profile() -> Option<String> {
     if !is_dbus_service_available(profiles).await {
         return None;
@@ -43,7 +47,6 @@ pub async fn query_power_profile() -> Option<String> {
     String::try_from(value).ok()
 }
 
-// set display brightness through the current logind session.
 pub async fn set_brightness(level: u32) -> Result<(), String> {
     let (name, _, maximum) = backlight().ok_or("no backlight")?;
     let session: zbus::zvariant::OwnedObjectPath =
@@ -52,16 +55,8 @@ pub async fn set_brightness(level: u32) -> Result<(), String> {
     call_dbus_method(logind, session.as_str(), "org.freedesktop.login1.Session", "SetBrightness", &body).await
 }
 
-// change the active power profile through dbus.
 pub async fn set_profile(profile: String) -> Result<(), String> {
     set_dbus_property(profiles, profiles_root, profiles, "ActiveProfile", profile.into()).await
-}
-
-// read the first backlight device's current and maximum brightness values.
-fn backlight() -> Option<(String, u64, u64)> {
-    let entry = crate::system::host::directory_entries("/sys/class/backlight").next()?;
-    let read = |file| std::fs::read_to_string(entry.path().join(file)).ok()?.trim().parse().ok();
-    Some((entry.file_name().to_string_lossy().into_owned(), read("brightness")?, read("max_brightness")?))
 }
 
 #[cfg(test)]

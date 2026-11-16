@@ -1,3 +1,8 @@
+use std::collections::HashSet;
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+
 use crate::config::configuration;
 use crate::menu::{build_category_items, check, item, item_activation};
 use crate::system;
@@ -5,10 +10,6 @@ use crate::system::action::action;
 use crate::system::host::{collect_system_snapshot, system_snapshot};
 use crate::view;
 use iced::{Font, Subscription, Task, event, time};
-use std::collections::HashSet;
-use std::path::PathBuf;
-use std::sync::Arc;
-use std::time::{Duration, Instant};
 
 #[derive(Clone, Copy)]
 pub enum nav {
@@ -27,8 +28,8 @@ pub enum message {
     exited(usize),
     frame(Instant),
     idle,
-    mouse,
     launch(usize),
+    mouse,
     nav(nav),
     pick { category_index: usize, selected_rows: Vec<usize> },
     run(String, action),
@@ -40,6 +41,37 @@ pub enum message {
 pub struct slide {
     position: Vec<f32>,
     last_frame: Option<Instant>,
+}
+
+pub struct deck {
+    pub busy_label: Option<String>,
+    pub category: usize,
+    pub config: Arc<configuration>,
+    pub error_text: Option<String>,
+    pub font_icons: Font,
+    pub last_pointer_activity: Option<Instant>,
+    pub menu_items: Vec<Vec<item>>,
+    pub navigation_sound: PathBuf,
+    pub remembered_rows: Vec<usize>,
+    pub running_apps: HashSet<usize>,
+    pub selected_rows: Vec<usize>,
+    pub slide: slide,
+    pub system_snapshot: Arc<system_snapshot>,
+}
+
+fn get_category_favorites_index(config: &configuration) -> usize {
+    crate::config::get_configured_categories(config).iter().position(|category| category == "Favorites").unwrap_or(0)
+}
+
+fn build_configured_menu_items(
+    config: &configuration,
+    system_snapshot: &system_snapshot,
+    running_apps: &HashSet<usize>,
+) -> Vec<Vec<item>> {
+    crate::config::get_configured_categories(config)
+        .iter()
+        .map(|category| build_category_items(config, system_snapshot, running_apps, category))
+        .collect()
 }
 
 impl slide {
@@ -64,26 +96,6 @@ impl slide {
     }
 }
 
-pub struct deck {
-    pub busy_label: Option<String>,
-    pub category: usize,
-    pub config: Arc<configuration>,
-    pub error_text: Option<String>,
-    pub font_icons: Font,
-    pub last_pointer_activity: Option<Instant>,
-    pub menu_items: Vec<Vec<item>>,
-    pub running_apps: HashSet<usize>,
-    pub remembered_rows: Vec<usize>,
-    pub selected_rows: Vec<usize>,
-    pub slide: slide,
-    pub navigation_sound: PathBuf,
-    pub system_snapshot: Arc<system_snapshot>,
-}
-
-fn get_category_favorites_index(config: &configuration) -> usize {
-    crate::config::get_configured_categories(config).iter().position(|category| category == "Favorites").unwrap_or(0)
-}
-
 impl deck {
     fn new(config: configuration, error: Option<String>) -> (Self, Task<message>) {
         let configuration_font_icons = Font::with_name(Box::leak(config.ui.font_family.clone().into_boxed_str()));
@@ -100,57 +112,14 @@ impl deck {
             last_pointer_activity: None,
             menu_items: Vec::new(),
             navigation_sound: configuration_navigation_sound,
-            running_apps: HashSet::new(),
             remembered_rows,
+            running_apps: HashSet::new(),
             selected_rows: vec![0],
             slide: slide::default(),
             system_snapshot: Arc::default(),
         };
         let task = deck.refresh_system_snapshot();
         (deck, task)
-    }
-
-    pub(crate) fn get_category_items(&self) -> &[item] {
-        self.menu_items.get(self.category).map_or(&[], Vec::as_slice)
-    }
-
-    // follow selected rows through nested menus to produce the visible columns.
-    pub(crate) fn get_visible_columns<'a>(&self, category_items: &'a [item]) -> Vec<&'a [item]> {
-        let mut columns = vec![category_items];
-        for &row in &self.selected_rows[..self.selected_rows.len() - 1] {
-            match columns.last().and_then(|items| items.get(row)) {
-                Some(item) if !item.children.is_empty() => columns.push(&item.children),
-                _ => break,
-            }
-        }
-        columns
-    }
-
-    // animate toward the current menu position instead of jumping between rows.
-    pub(crate) fn get_display_position(&self) -> Vec<f32> {
-        self.slide.get_position(self.get_target_position())
-    }
-
-    // subscribe to input, periodic status refreshes, idle timing, and animation frames.
-    fn subscription(&self) -> Subscription<message> {
-        Subscription::batch([
-            event::listen_with(crate::input::keys),
-            time::every(Duration::from_secs(5)).map(|_| message::tick),
-            if self
-                .last_pointer_activity
-                .is_some_and(|last_activity| last_activity.elapsed() < Duration::from_millis(4500))
-            {
-                time::every(Duration::from_millis(500)).map(|_| message::idle)
-            } else {
-                Subscription::none()
-            },
-            if !self.slide.is_moving(&self.get_target_position()) {
-                Subscription::none()
-            } else {
-                time::every(Duration::from_micros(8_333)).map(|_| message::frame(Instant::now()))
-            },
-            Subscription::run(crate::input::gamepad),
-        ])
     }
 
     // apply one event and return any asynchronous work it starts.
@@ -200,7 +169,6 @@ impl deck {
         Task::none()
     }
 
-    // encode category, menu depth, and selected rows as the animation destination.
     fn get_target_position(&self) -> Vec<f32> {
         let head = [self.category as f32, self.selected_rows.len() as f32 - 1.0];
         head.into_iter().chain(self.selected_rows.iter().map(|row| *row as f32)).collect()
@@ -258,7 +226,7 @@ impl deck {
     // translate directional/select commands into menu movement or item activation.
     fn apply_navigation(&mut self, nav: nav) -> Task<message> {
         let (depth, selected_rows, row, item_count, child_row, activation) = {
-            let columns = self.get_visible_columns(self.get_category_items());
+            let columns = self.get_selection_category_breadcrumb(self.get_category_items());
             let mut selected_rows = self.selected_rows[..columns.len()].to_vec();
             let depth = selected_rows.len() - 1;
             let items = columns[depth];
@@ -303,17 +271,46 @@ impl deck {
     fn refresh_system_snapshot(&self) -> Task<message> {
         Task::perform(collect_system_snapshot(self.config.clone()), |snapshot| message::snapshot(snapshot.into()))
     }
-}
 
-pub(crate) fn build_configured_menu_items(
-    config: &configuration,
-    system_snapshot: &system_snapshot,
-    running_apps: &HashSet<usize>,
-) -> Vec<Vec<item>> {
-    crate::config::get_configured_categories(config)
-        .iter()
-        .map(|category| build_category_items(config, system_snapshot, running_apps, category))
-        .collect()
+    fn subscription(&self) -> Subscription<message> {
+        Subscription::batch([
+            event::listen_with(crate::input::keys),
+            time::every(Duration::from_secs(5)).map(|_| message::tick),
+            if self
+                .last_pointer_activity
+                .is_some_and(|last_activity| last_activity.elapsed() < Duration::from_millis(4500))
+            {
+                time::every(Duration::from_millis(500)).map(|_| message::idle)
+            } else {
+                Subscription::none()
+            },
+            if !self.slide.is_moving(&self.get_target_position()) {
+                Subscription::none()
+            } else {
+                time::every(Duration::from_micros(8_333)).map(|_| message::frame(Instant::now()))
+            },
+            Subscription::run(crate::input::gamepad),
+        ])
+    }
+
+    pub(crate) fn get_selection_category_breadcrumb<'a>(&self, category_items: &'a [item]) -> Vec<&'a [item]> {
+        let mut columns = vec![category_items];
+        for &row in &self.selected_rows[..self.selected_rows.len() - 1] {
+            match columns.last().and_then(|items| items.get(row)) {
+                Some(item) if !item.children.is_empty() => columns.push(&item.children),
+                _ => break,
+            }
+        }
+        columns
+    }
+
+    pub(crate) fn get_display_position(&self) -> Vec<f32> {
+        self.slide.get_position(self.get_target_position())
+    }
+
+    pub(crate) fn get_category_items(&self) -> &[item] {
+        self.menu_items.get(self.category).map_or(&[], Vec::as_slice)
+    }
 }
 
 pub fn run(config: configuration, error: Option<String>) -> iced::Result {
@@ -328,5 +325,5 @@ pub fn run(config: configuration, error: Option<String>) -> iced::Result {
 }
 
 #[cfg(test)]
-#[path = "app.test.rs"]
+#[path = "deck.test.rs"]
 mod tests;

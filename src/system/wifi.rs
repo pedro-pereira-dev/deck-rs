@@ -19,9 +19,14 @@ pub struct network {
 
 #[derive(Clone)]
 pub struct wifi {
-    pub networks: Vec<network>,
     pub adapter_object_path: String,
     pub is_powered: bool,
+    pub networks: Vec<network>,
+}
+
+// convert signal strength in centi-dbm into a small number of display bars.
+fn signal(centi_dbm: i16) -> usize {
+    ((centi_dbm as f32 / 100.0 + 100.0).clamp(0.0, 100.0) / 25.0).ceil() as usize
 }
 
 fn networks(
@@ -34,18 +39,17 @@ fn networks(
         .take(8)
         .map(|(network, strength)| network {
             is_active: connected.as_ref() == Some(&network),
+            object_path: network.to_string(),
             signal: signal(strength),
             ssid: objects
                 .get(&network)
                 .and_then(|interfaces| find_interface_properties(interfaces, network_interface))
                 .and_then(|properties| property_value(properties, "Name"))
                 .unwrap_or_else(|| "unknown".into()),
-            object_path: network.to_string(),
         })
         .collect()
 }
 
-// read the wireless adapter and its strongest available networks from iwd.
 pub async fn query_wifi_state() -> Option<wifi> {
     if !is_dbus_service_available(service).await {
         return None;
@@ -64,21 +68,15 @@ pub async fn query_wifi_state() -> Option<wifi> {
     let powered = find_interface_properties(interfaces, device)
         .and_then(|properties| property_value(properties, "Powered"))
         .unwrap_or(false);
-    Some(wifi { networks, adapter_object_path: object_path.to_string(), is_powered: powered })
+    Some(wifi { adapter_object_path: object_path.to_string(), is_powered: powered, networks })
 }
 
-// toggle wi-fi power or invoke the requested station or network operation.
 pub async fn perform_wifi_action(method: &str, object_path: String) -> Result<(), String> {
     match method {
         "on" | "off" => set_dbus_property(service, &object_path, device, "Powered", (method == "on").into()).await,
         "Connect" => call_dbus_method(service, &object_path, network_interface, method, &()).await,
         method => call_dbus_method(service, &object_path, station, method, &()).await,
     }
-}
-
-// convert signal strength in centi-dbm into a small number of display bars.
-fn signal(centi_dbm: i16) -> usize {
-    ((centi_dbm as f32 / 100.0 + 100.0).clamp(0.0, 100.0) / 25.0).ceil() as usize
 }
 
 #[cfg(test)]

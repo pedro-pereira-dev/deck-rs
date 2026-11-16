@@ -1,13 +1,7 @@
-use crate::app::{message, nav};
+use crate::deck::{message, nav};
 use iced::futures::SinkExt;
 use iced::keyboard::{self, Key, key::Named};
 use iced::{Event, event};
-
-// map named keyboard keys to the shared menu navigation commands.
-pub fn keys(event: Event, _: event::Status, _: iced::window::Id) -> Option<message> {
-    let Event::Keyboard(keyboard::Event::KeyPressed { key: Key::Named(key), .. }) = event else { return None };
-    Some(message::nav(key_nav(key)?))
-}
 
 fn key_nav(key: Named) -> Option<nav> {
     Some(match key {
@@ -19,27 +13,6 @@ fn key_nav(key: Named) -> Option<nav> {
         Named::BrowserHome | Named::ContextMenu | Named::Home | Named::Power | Named::Settings => nav::menu,
         Named::Enter | Named::Select | Named::Space => nav::select,
         _ => return None,
-    })
-}
-
-// forward gamepad events from a blocking gilrs poller into iced's async stream.
-pub fn gamepad() -> impl iced::futures::Stream<Item = message> {
-    iced::stream::channel(32, async |mut sender| {
-        let _ = tokio::task::spawn_blocking(move || {
-            let Ok(mut gilrs) = gilrs::Gilrs::new() else {
-                return;
-            };
-            let mut stick = (0, 0);
-            loop {
-                let Some(nav) = gilrs.next_event_blocking(None).and_then(|e| translate(e.event, &mut stick)) else {
-                    continue;
-                };
-                if iced::futures::executor::block_on(sender.send(message::nav(nav))).is_err() {
-                    return;
-                }
-            }
-        })
-        .await;
     })
 }
 
@@ -83,6 +56,33 @@ fn button_nav(button: gilrs::Button) -> Option<nav> {
         Button::South => Some(nav::select),
         _ => None,
     }
+}
+
+// map named keyboard keys to the shared menu navigation commands.
+pub fn keys(event: Event, _: event::Status, _: iced::window::Id) -> Option<message> {
+    let Event::Keyboard(keyboard::Event::KeyPressed { key: Key::Named(key), .. }) = event else { return None };
+    Some(message::nav(key_nav(key)?))
+}
+
+// forward gamepad events from a blocking gilrs poller into iced's async stream.
+pub fn gamepad() -> impl iced::futures::Stream<Item = message> {
+    iced::stream::channel(32, async |mut sender| {
+        let _ = tokio::task::spawn_blocking(move || {
+            let Ok(mut gilrs) = gilrs::Gilrs::new() else {
+                return;
+            };
+            let mut stick = (0, 0);
+            loop {
+                let Some(nav) = gilrs.next_event_blocking(None).and_then(|e| translate(e.event, &mut stick)) else {
+                    continue;
+                };
+                if iced::futures::executor::block_on(sender.send(message::nav(nav))).is_err() {
+                    return;
+                }
+            }
+        })
+        .await;
+    })
 }
 
 #[cfg(test)]

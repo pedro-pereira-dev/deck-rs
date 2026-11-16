@@ -1,13 +1,35 @@
 use std::collections::HashMap;
+
 use zbus::Connection;
 use zbus::names::OwnedInterfaceName;
 use zbus::zvariant::{DynamicDeserialize, DynamicType, OwnedValue, Value};
 
 type dbus_properties = HashMap<String, OwnedValue>;
 
-async fn bus() -> Result<Connection, String> {
-    static connection: tokio::sync::OnceCell<Option<Connection>> = tokio::sync::OnceCell::const_new();
-    connection.get_or_init(|| async { Connection::system().await.ok() }).await.clone().ok_or("no system bus".into())
+pub(super) async fn call_dbus_method<B, R>(
+    service: &str,
+    object_path: &str,
+    interface: &str,
+    method: &str,
+    body: &B,
+) -> Result<R, String>
+where
+    B: serde::Serialize + DynamicType,
+    R: for<'de> DynamicDeserialize<'de>,
+{
+    let connection = bus().await?;
+    let reply = connection.call_method(Some(service), object_path, Some(interface), method, body).await;
+    reply.map_err(|error| error.to_string())?.body().deserialize().map_err(|error| error.to_string())
+}
+
+pub(super) async fn set_dbus_property(
+    service: &str,
+    object_path: &str,
+    interface: &str,
+    name: &str,
+    value: Value<'_>,
+) -> Result<(), String> {
+    call_dbus_method(service, object_path, "org.freedesktop.DBus.Properties", "Set", &(interface, name, value)).await
 }
 
 pub(super) async fn is_dbus_service_available(service: &str) -> bool {
@@ -34,30 +56,9 @@ pub(super) fn property_value<T: TryFrom<OwnedValue>>(properties: &dbus_propertie
     T::try_from(properties.get(name)?.try_clone().ok()?).ok()
 }
 
-pub(super) async fn call_dbus_method<B, R>(
-    service: &str,
-    object_path: &str,
-    interface: &str,
-    method: &str,
-    body: &B,
-) -> Result<R, String>
-where
-    B: serde::Serialize + DynamicType,
-    R: for<'de> DynamicDeserialize<'de>,
-{
-    let connection = bus().await?;
-    let reply = connection.call_method(Some(service), object_path, Some(interface), method, body).await;
-    reply.map_err(|error| error.to_string())?.body().deserialize().map_err(|error| error.to_string())
-}
-
-pub(super) async fn set_dbus_property(
-    service: &str,
-    object_path: &str,
-    interface: &str,
-    name: &str,
-    value: Value<'_>,
-) -> Result<(), String> {
-    call_dbus_method(service, object_path, "org.freedesktop.DBus.Properties", "Set", &(interface, name, value)).await
+async fn bus() -> Result<Connection, String> {
+    static connection: tokio::sync::OnceCell<Option<Connection>> = tokio::sync::OnceCell::const_new();
+    connection.get_or_init(|| async { Connection::system().await.ok() }).await.clone().ok_or("no system bus".into())
 }
 
 #[cfg(test)]

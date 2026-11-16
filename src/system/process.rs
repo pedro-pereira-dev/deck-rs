@@ -1,5 +1,6 @@
-use crate::config::configuration_app;
 use std::path::PathBuf;
+
+use crate::config::configuration_app;
 
 pub async fn play_navigation_sound(sound: PathBuf) {
     let player = ["pw-play", "paplay"].into_iter().find(|player| super::is_executable_on_path(player));

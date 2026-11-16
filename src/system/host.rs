@@ -1,7 +1,8 @@
-use crate::config::configuration;
-use crate::system::{self, audio, bluetooth, power, wifi};
 use std::fs::{DirEntry, read_to_string};
 use std::sync::Arc;
+
+use crate::config::configuration;
+use crate::system::{self, audio, bluetooth, power, wifi};
 
 // classify the active network link for icons and labels.
 #[derive(Clone, Copy, Default, PartialEq)]
@@ -30,57 +31,32 @@ pub struct host_metrics {
 // one snapshot of all queried system modules, clock, and network information.
 #[derive(Default)]
 pub struct system_snapshot {
+    pub active_network_interface: String,
     pub audio: Option<audio::audio>,
     pub bluetooth: Option<bluetooth::bluetooth>,
     pub brightness: Option<u32>,
     pub date: String,
-    pub active_network_interface: String,
-    pub network_link: link,
-    pub is_power_available: bool,
-    pub power_profile: Option<String>,
     pub host_metrics: host_metrics,
+    pub is_power_available: bool,
+    pub network_link: link,
+    pub power_profile: Option<String>,
     pub time: String,
     pub wifi: Option<wifi::wifi>,
 }
 
-// query independent status providers concurrently to keep refreshes responsive.
-pub async fn collect_system_snapshot(config: Arc<configuration>) -> system_snapshot {
-    let (audio, bluetooth, brightness, clock, power_available, power_profile, wifi, host_metrics) = iced::futures::join!(
-        audio::query_audio_state(),
-        bluetooth::query_bluetooth_state(),
-        power::query_brightness(),
-        run_command_and_capture_stdout("date", &["+%H:%M|%A, %-d of %B %Y"]),
-        power::is_login_manager_available(),
-        power::query_power_profile(),
-        wifi::query_wifi_state(),
-        collect_host_metrics(&config.ui.ping),
-    );
-    let (time, date) = clock.split_once('|').unwrap_or_default();
-    let (time, date) = (time.into(), date.into());
-    let (network_link, active_network_interface) = active_network_interface();
-    system_snapshot {
-        active_network_interface,
-        audio,
-        bluetooth,
-        brightness,
-        date,
-        host_metrics,
-        network_link,
-        is_power_available: power_available,
-        power_profile,
-        time,
-        wifi,
-    }
+fn active_network_interface() -> (link, String) {
+    let ignored = ["br", "docker", "lo", "tailscale", "tun", "veth", "virbr", "wg"];
+    directory_entries("/sys/class/net")
+        .map(|entry| (entry.path(), entry.file_name().to_string_lossy().into_owned()))
+        .filter(|(_, name)| !ignored.iter().any(|prefix| name.starts_with(prefix)))
+        .find(|(path, _)| read_to_string(path.join("operstate")).is_ok_and(|state| state.trim() == "up"))
+        .map_or((link::none, String::new()), |(path, name)| {
+            (if path.join("wireless").exists() { link::wireless } else { link::ethernet }, name)
+        })
 }
 
-// run a system command and discard surrounding whitespace from its output.
 async fn run_command_and_capture_stdout(program: &str, args: &[&str]) -> String {
     system::run_command_and_capture_stdout(program, args).await.trim().to_owned()
-}
-
-// iterate entries in a system directory, treating inaccessible directories as empty.
-pub fn directory_entries(directory: &str) -> impl Iterator<Item = DirEntry> {
-    std::fs::read_dir(directory).into_iter().flatten().flatten()
 }
 
 fn read_trimmed_file(file_path: &str) -> String {
@@ -124,7 +100,6 @@ fn format_uptime(seconds: u64) -> String {
     format!("{}h {}m", seconds / 3600, seconds / 60 % 60)
 }
 
-// gather host statistics from procfs, sysfs, and standard system utilities.
 async fn collect_host_metrics(host: &str) -> host_metrics {
     let (before, args) = (cpu(), ["-c1", "-W1", host]);
     let (address_output, disk_output, ping_output, _) = iced::futures::join!(
@@ -164,18 +139,39 @@ async fn collect_host_metrics(host: &str) -> host_metrics {
     }
 }
 
+pub async fn collect_system_snapshot(config: Arc<configuration>) -> system_snapshot {
+    let (audio, bluetooth, brightness, clock, power_available, power_profile, wifi, host_metrics) = iced::futures::join!(
+        audio::query_audio_state(),
+        bluetooth::query_bluetooth_state(),
+        power::query_brightness(),
+        run_command_and_capture_stdout("date", &["+%H:%M|%A, %-d of %B %Y"]),
+        power::is_login_manager_available(),
+        power::query_power_profile(),
+        wifi::query_wifi_state(),
+        collect_host_metrics(&config.ui.ping),
+    );
+    let (time, date) = clock.split_once('|').unwrap_or_default();
+    let (time, date) = (time.into(), date.into());
+    let (network_link, active_network_interface) = active_network_interface();
+    system_snapshot {
+        active_network_interface,
+        audio,
+        bluetooth,
+        brightness,
+        date,
+        host_metrics,
+        is_power_available: power_available,
+        network_link,
+        power_profile,
+        time,
+        wifi,
+    }
+}
+
+pub fn directory_entries(directory: &str) -> impl Iterator<Item = DirEntry> {
+    std::fs::read_dir(directory).into_iter().flatten().flatten()
+}
+
 #[cfg(test)]
 #[path = "host.test.rs"]
 mod tests;
-
-// identify the first active physical interface and whether it is wireless.
-fn active_network_interface() -> (link, String) {
-    let ignored = ["br", "docker", "lo", "tailscale", "tun", "veth", "virbr", "wg"];
-    directory_entries("/sys/class/net")
-        .map(|entry| (entry.path(), entry.file_name().to_string_lossy().into_owned()))
-        .filter(|(_, name)| !ignored.iter().any(|prefix| name.starts_with(prefix)))
-        .find(|(path, _)| read_to_string(path.join("operstate")).is_ok_and(|state| state.trim() == "up"))
-        .map_or((link::none, String::new()), |(path, name)| {
-            (if path.join("wireless").exists() { link::wireless } else { link::ethernet }, name)
-        })
-}
