@@ -1,5 +1,5 @@
 use crate::deck::{deck, message, navigation};
-use crate::menu::{bluetooth_glyph, category_glyph, check, network_glyph, volume_glyph};
+use crate::menu::{bluetooth_glyph, category_glyph, icon_check, network_glyph, volume_glyph};
 use iced::alignment::Vertical;
 use iced::mouse::{Button, ScrollDelta};
 use iced::widget::canvas::{self, Action, Event, Frame, Geometry, Text};
@@ -199,9 +199,16 @@ impl canvas::Program<message> for deck {
                     (true, false) => subdued,
                     _ => dim,
                 };
-                let checked = item.value == check;
+                let checked = item.value == icon_check;
                 put(&item.glyph, (x, y), size, color, Alignment::Center, icon);
-                put(if checked { check } else { "" }, (x - unit * 0.5, y), unit * 0.18, color, Alignment::Center, icon);
+                put(
+                    if checked { icon_check } else { "" },
+                    (x - unit * 0.5, y),
+                    unit * 0.18,
+                    color,
+                    Alignment::Center,
+                    icon,
+                );
                 put(&item.label, (x + unit * 0.5, y - size * 0.5), size * 0.5, color, Alignment::Left, label);
                 if index == selected && column == depth {
                     lines.push((x + unit * 0.5, y + size * 0.08, measure(&item.label, size * 0.5).min(unit * 4.0)));

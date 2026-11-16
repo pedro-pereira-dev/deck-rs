@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::config::configuration;
-use crate::menu::{build_category_items, check, item, item_activation};
+use crate::menu::{build_category_items, icon_check, item, item_activation};
 use crate::system;
 use crate::system::action::action;
 use crate::system::host::{collect_system_snapshot, system_snapshot};
@@ -238,7 +238,7 @@ impl deck {
             selected_rows[depth] = row;
             let child_row = selected_item.and_then(|selected| {
                 (!selected.children.is_empty())
-                    .then(|| selected.children.iter().position(|item| item.value == check).unwrap_or(0))
+                    .then(|| selected.children.iter().position(|item| item.value == icon_check).unwrap_or(0))
             });
             let activation = selected_item.and_then(|selected| selected.activation.clone());
             (depth, selected_rows, row, items.len(), child_row, activation)
@@ -277,7 +277,7 @@ impl deck {
     fn subscription(&self) -> Subscription<message> {
         let animation_frame_interval = get_animation_frame_interval(&self.config);
         Subscription::batch([
-            event::listen_with(crate::input::keys),
+            event::listen_with(crate::input::handle_keyboard_event),
             time::every(Duration::from_secs(5)).map(|_| message::tick),
             if self
                 .last_pointer_activity
@@ -292,7 +292,7 @@ impl deck {
             } else {
                 time::every(animation_frame_interval).map(|_| message::frame(Instant::now()))
             },
-            Subscription::run(crate::input::gamepad),
+            Subscription::run(crate::input::handle_controller_events),
         ])
     }
 

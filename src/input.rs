@@ -3,7 +3,7 @@ use iced::futures::SinkExt;
 use iced::keyboard::{self, Key, key::Named};
 use iced::{Event, event};
 
-fn key_nav(key: Named) -> Option<navigation> {
+fn navigate_with_keyboard(key: Named) -> Option<navigation> {
     Some(match key {
         Named::ArrowDown => navigation::down,
         Named::ArrowLeft => navigation::left,
@@ -16,17 +16,16 @@ fn key_nav(key: Named) -> Option<navigation> {
     })
 }
 
-// convert d-pad buttons and joystick threshold crossings into navigation commands.
-fn translate(event: gilrs::EventType, stick: &mut (i8, i8)) -> Option<navigation> {
+fn get_keyboard_navigation_from_controller(event: gilrs::EventType, stick: &mut (i8, i8)) -> Option<navigation> {
     use gilrs::EventType;
     match event {
-        EventType::ButtonPressed(button, _) => button_nav(button),
-        EventType::AxisChanged(axis, value, _) => axis_nav(axis, value, stick),
+        EventType::ButtonPressed(button, _) => navigate_with_controller_buttons(button),
+        EventType::AxisChanged(axis, value, _) => navigate_with_controller_joystick(axis, value, stick),
         _ => None,
     }
 }
 
-fn axis_nav(axis: gilrs::Axis, value: f32, stick: &mut (i8, i8)) -> Option<navigation> {
+fn navigate_with_controller_joystick(axis: gilrs::Axis, value: f32, stick: &mut (i8, i8)) -> Option<navigation> {
     use gilrs::Axis;
     let direction = if value > 0.6 {
         1
@@ -44,7 +43,7 @@ fn axis_nav(axis: gilrs::Axis, value: f32, stick: &mut (i8, i8)) -> Option<navig
     (changed && direction != 0).then(|| navs[usize::from(direction > 0)])
 }
 
-fn button_nav(button: gilrs::Button) -> Option<navigation> {
+fn navigate_with_controller_buttons(button: gilrs::Button) -> Option<navigation> {
     use gilrs::Button;
     match button {
         Button::DPadDown => Some(navigation::down),
@@ -58,14 +57,12 @@ fn button_nav(button: gilrs::Button) -> Option<navigation> {
     }
 }
 
-// map named keyboard keys to the shared menu navigation commands.
-pub fn keys(event: Event, _: event::Status, _: iced::window::Id) -> Option<message> {
+pub fn handle_keyboard_event(event: Event, _: event::Status, _: iced::window::Id) -> Option<message> {
     let Event::Keyboard(keyboard::Event::KeyPressed { key: Key::Named(key), .. }) = event else { return None };
-    Some(message::nav(key_nav(key)?))
+    Some(message::nav(navigate_with_keyboard(key)?))
 }
 
-// forward gamepad events from a blocking gilrs poller into iced's async stream.
-pub fn gamepad() -> impl iced::futures::Stream<Item = message> {
+pub fn handle_controller_events() -> impl iced::futures::Stream<Item = message> {
     iced::stream::channel(32, async |mut sender| {
         let _ = tokio::task::spawn_blocking(move || {
             let Ok(mut gilrs) = gilrs::Gilrs::new() else {
@@ -73,7 +70,10 @@ pub fn gamepad() -> impl iced::futures::Stream<Item = message> {
             };
             let mut stick = (0, 0);
             loop {
-                let Some(nav) = gilrs.next_event_blocking(None).and_then(|e| translate(e.event, &mut stick)) else {
+                let Some(nav) = gilrs
+                    .next_event_blocking(None)
+                    .and_then(|e| get_keyboard_navigation_from_controller(e.event, &mut stick))
+                else {
                     continue;
                 };
                 if iced::futures::executor::block_on(sender.send(message::nav(nav))).is_err() {
