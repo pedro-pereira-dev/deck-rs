@@ -1,21 +1,21 @@
-import { CrossMenu } from "cross_menu.slint";
-import { Theme } from "theme.slint";
 import { LinearProgressIndicator } from "@material";
+import { Cell, Xmb } from "xmb.slint";
+import "../assets/SymbolsNerdFontMono-Regular.ttf";
+import { Theme } from "theme.slint";
 
+export { Cell } from "xmb.slint";
 export { Theme } from "theme.slint";
 
 export component AppWindow inherits Window {
+    in property <bool> busy;
     in property <[string]> categories;
     in property <[string]> category-icons;
-    in property <[string]> items;
-    in property <[string]> item-icons;
-    in property <[string]> item-values;
-    in property <int> selected-category;
-    in property <int> selected-item;
+    in property <string> category-title;
+    in property <[Cell]> cells;
+    in property <string> clock-date;
+    in property <string> clock-time;
+    in property <int> depth;
     in property <string> error-message;
-    in property <bool> busy;
-    in property <string> clock-text;
-    in property <string> subtitle;
     in property <string> key_back;
     in property <string> key_down;
     in property <string> key_left;
@@ -23,54 +23,48 @@ export component AppWindow inherits Window {
     in property <string> key_right;
     in property <string> key_select;
     in property <string> key_up;
-    in property <length> category-gap: Theme.category-gap;
-    in property <length> item-gap: Theme.item-gap;
-    in property <length> item-size: Theme.item-size;
-    callback navigate(string);
-    callback select();
-    callback focus-item(int);
+    in property <int> selected-category;
     callback focus-category(int);
+    callback navigate(string);
+    callback pick-cell(int, int);
     callback scroll-items(float);
+    callback select();
 
-    title: "deck-rs";
     background: Theme.background;
-    preferred-width: 1280px;
-    preferred-height: 720px;
     forward-focus: menu-focus;
+    preferred-height: 720px;
+    preferred-width: 1280px;
+    title: "deck-rs";
 
-    menu-focus := CrossMenu {
+    menu-focus := Xmb {
         categories: root.categories;
         category-icons: root.category-icons;
-        items: root.items;
-        item-icons: root.item-icons;
-        item-values: root.item-values;
-        selected-category: root.selected-category;
-        selected-item: root.selected-item;
+        category-title: root.category-title;
+        cells: root.cells;
+        clock-date: root.clock-date;
+        clock-time: root.clock-time;
+        depth: root.depth;
         error-message: root.error-message;
-        clock-text: root.clock-text;
-        subtitle: root.subtitle;
-        key-back: root.key_back;
-        key-down: root.key_down;
-        key-left: root.key_left;
-        key-menu: root.key_menu;
-        key-right: root.key_right;
-        key-select: root.key_select;
-        key-up: root.key_up;
-        category-gap: root.category-gap;
-        item-gap: root.item-gap;
-        item-size: root.item-size;
-        navigate(direction) => { root.navigate(direction); }
-        select => { root.select(); }
-        focus-item(index) => { root.focus-item(index); }
+        key_back: root.key_back;
+        key_down: root.key_down;
+        key_left: root.key_left;
+        key_menu: root.key_menu;
+        key_right: root.key_right;
+        key_select: root.key_select;
+        key_up: root.key_up;
+        selected-category: root.selected-category;
         focus-category(index) => { root.focus-category(index); }
+        navigate(command) => { root.navigate(command); }
+        pick-cell(column, index) => { root.pick-cell(column, index); }
         scroll-items(delta) => { root.scroll-items(delta); }
+        select => { root.select(); }
     }
 
-    if root.busy : LinearProgressIndicator {
+    if root.busy: LinearProgressIndicator {
+        indeterminate: true;
+        progress: 0;
+        width: parent.width - 128px;
         x: 64px;
         y: 12px;
-        width: parent.width - 128px;
-        progress: 0;
-        indeterminate: true;
     }
 }

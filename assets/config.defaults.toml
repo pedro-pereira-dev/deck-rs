@@ -41,17 +41,11 @@ select = "Enter"
 up = "UpArrow"
 
 [ui]
-accent = "#8ab4f8"
-background = "#080b12"
+animation_ms = 180
+background = "#000000"
+background_image = ""
 categories = []
-category_gap = 270
 favorites = []
 font_family = "Symbols Nerd Font Mono"
 icons = {}
-item_gap = 18
-item_size = 30
-muted = "#9198a8"
-panel = "#171d29"
-selected = "#252f40"
-subtitle = "deck-rs  /  app launcher"
-text = "#f3f5f8"
+text = "#ffffff"

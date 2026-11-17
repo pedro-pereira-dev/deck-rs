@@ -13,6 +13,7 @@ slint = { version = "~1.18.1", default-features = false, features = [
     "backend-winit-wayland",
     "backend-winit-x11",
     "renderer-femtovg",
+    "renderer-software",
 ] }
 toml = "1"
 

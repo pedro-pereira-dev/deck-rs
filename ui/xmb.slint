@@ -1,0 +1,233 @@
+import { Theme } from "theme.slint";
+
+export struct Cell {
+    active: bool,
+    column: int,
+    focus: int,
+    glyph: string,
+    index: int,
+    label: string,
+    subtitle: string,
+}
+
+export component Xmb inherits Rectangle {
+    in property <[string]> categories;
+    in property <[string]> category-icons;
+    in property <string> category-title;
+    in property <[Cell]> cells;
+    in property <string> clock-date;
+    in property <string> clock-time;
+    in property <string> error-message;
+    in property <int> depth;
+    in property <string> key_back: "Escape";
+    in property <string> key_down: "DownArrow";
+    in property <string> key_left: "LeftArrow";
+    in property <string> key_menu: "Home";
+    in property <string> key_right: "RightArrow";
+    in property <string> key_select: "Return";
+    in property <string> key_up: "UpArrow";
+    in property <int> selected-category;
+    callback focus-category(int);
+    callback navigate(string);
+    callback pick-cell(int, int);
+    callback scroll-items(float);
+    callback select();
+
+    pure function row-y(column: int, offset: float) -> float {
+        if (abs(offset) < 1 && (offset > 0 || column > 0)) {
+            return 4.6 + offset * 0.75;
+        }
+        if (offset > 0 || column > 0) {
+            return 4.6 + (offset > 0 ? 0.25 : -0.25) + offset * 0.5;
+        }
+        if (offset > -1) {
+            return 4.6 + offset * 2;
+        }
+        return 2.6 + (offset + 1) * 0.5;
+    }
+
+    pure function row-size(column: int, offset: float) -> float {
+        return (column > 0 ? 0.25 : 0.3) + (column > 0 ? 0.1 : 0.15) * max(1 - abs(offset), 0);
+    }
+
+    property <color> dim: Theme.text.with-alpha(0.15);
+    property <float> depth-position: root.depth;
+    property <float> category-position: root.selected-category;
+    property <color> subdued: Theme.text.with-alpha(0.6);
+    property <length> unit: root.height / 10;
+
+    animate category-position { duration: Theme.animation; easing: ease-out; }
+    animate depth-position { duration: Theme.animation; easing: ease-out; }
+
+    background: Theme.background;
+    forward-focus: input-focus;
+
+    if Theme.has-background-image: Image {
+        height: 100%;
+        image-fit: cover;
+        source: Theme.background-image;
+        width: 100%;
+    }
+
+    TouchArea {
+        pointer-event(event) => {
+            if event.kind == PointerEventKind.down && event.button == PointerEventButton.right {
+                root.navigate("back");
+            }
+        }
+        scroll-event(event) => {
+            if event.delta-y != 0 {
+                root.scroll-items(event.delta-y / 1px);
+                return accept;
+            }
+            reject
+        }
+    }
+
+    Text {
+        color: Theme.text;
+        font-size: root.unit * 0.65;
+        text: root.category-title;
+        x: root.unit * 0.6;
+        y: root.unit * 0.3;
+    }
+
+    Text {
+        color: Theme.text;
+        font-size: root.unit * 1.125;
+        horizontal-alignment: right;
+        text: root.clock-time;
+        width: 6 * root.unit;
+        x: root.width - 0.6 * root.unit - self.width;
+        y: root.unit * 0.3;
+    }
+
+    Text {
+        color: root.subdued;
+        font-size: root.unit * 0.18;
+        horizontal-alignment: right;
+        text: root.clock-date;
+        width: 6 * root.unit;
+        x: root.width - 0.6 * root.unit - self.width;
+        y: root.unit * 1.6;
+    }
+
+    for glyph[index] in root.category-icons: Rectangle {
+        property <bool> focused: index == root.selected-category;
+        property <length> glyph-size: (focused ? 0.6 : 0.5) * root.unit;
+
+        height: root.unit;
+        opacity: root.depth-position >= 2 ? 0 : 1;
+        width: 1.4 * root.unit;
+        x: root.width / 2 - root.unit - root.depth-position * 3.5 * root.unit
+            + (index - root.category-position) * 1.4 * root.unit - self.width / 2;
+        y: 3.3 * root.unit - self.height / 2;
+        animate opacity { duration: Theme.animation; }
+
+        Text {
+            color: !focused ? root.dim : root.depth == 0 ? Theme.text : root.subdued;
+            font-family: Theme.font-family;
+            font-size: parent.glyph-size;
+            horizontal-alignment: center;
+            text: glyph;
+            vertical-alignment: center;
+            animate color { duration: Theme.animation; }
+            animate font-size { duration: Theme.animation; easing: ease-out; }
+        }
+
+        TouchArea {
+            clicked => { root.focus-category(index); }
+        }
+    }
+
+    for cell in root.cells: slot := Rectangle {
+        property <float> offset: cell.index - cell.focus;
+        property <bool> selected: cell.index == cell.focus;
+        property <length> size: row-size(cell.column, offset) * root.unit;
+        property <color> tint: selected ? (cell.active ? Theme.text : root.subdued) : root.dim;
+
+        height: 0;
+        visible: self.y >= 1.5 * root.unit;
+        width: 0;
+        x: root.width / 2 - root.unit + (cell.column - root.depth-position) * 3.5 * root.unit;
+        y: (row-y(cell.column, offset) - 0.3) * root.unit;
+        animate y { duration: Theme.animation; easing: ease-out; }
+
+        Text {
+            color: slot.tint;
+            font-family: Theme.font-family;
+            font-size: min(slot.size * 0.7, 0.5 * root.unit);
+            horizontal-alignment: center;
+            text: cell.glyph;
+            vertical-alignment: center;
+            width: 1.4 * root.unit;
+            x: -self.width / 2;
+            y: -self.height / 2;
+            animate color { duration: Theme.animation; }
+        }
+
+        label := Text {
+            color: slot.tint;
+            font-size: slot.size * 0.5;
+            overflow: elide;
+            text: cell.label;
+            width: 4 * root.unit;
+            x: 0.5 * root.unit;
+            y: -slot.size * 0.5;
+            animate color { duration: Theme.animation; }
+        }
+
+        if slot.selected && cell.active: Rectangle {
+            background: Theme.text;
+            height: 0.015 * root.unit;
+            width: min(label.preferred-width, 4 * root.unit);
+            x: 0.5 * root.unit;
+            y: slot.size * 0.08;
+        }
+
+        if slot.selected: Text {
+            color: root.subdued;
+            font-size: slot.size * 0.35;
+            text: cell.subtitle;
+            x: 0.5 * root.unit;
+            y: slot.size * 0.15;
+        }
+
+        TouchArea {
+            height: slot.size;
+            pointer-event(event) => {
+                if event.kind == PointerEventKind.down && event.button == PointerEventButton.right {
+                    root.navigate("back");
+                }
+            }
+            width: 5 * root.unit;
+            x: -0.5 * root.unit;
+            y: -slot.size / 2;
+            clicked => { root.pick-cell(cell.column, cell.index); }
+        }
+    }
+
+    if root.error-message != "": Text {
+        color: root.subdued;
+        font-size: root.unit * 0.15;
+        text: root.error-message;
+        width: root.width - 1.2 * root.unit;
+        x: 0.6 * root.unit;
+        y: root.height - 0.5 * root.unit;
+    }
+
+    input-focus := FocusScope {
+        key-pressed(event) => {
+            if event.text == root.key_left { root.navigate("left"); }
+            else if event.text == root.key_right { root.navigate("right"); }
+            else if event.text == root.key_up { root.navigate("up"); }
+            else if event.text == root.key_down { root.navigate("down"); }
+            else if event.text == root.key_select || event.text == " " { root.select(); }
+            else if event.text == root.key_back { root.navigate("back"); }
+            else if event.text == root.key_menu { root.navigate("menu"); }
+            accept
+        }
+    }
+
+    init => { input-focus.focus(); }
+}

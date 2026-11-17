@@ -87,7 +87,7 @@ shot name="home" *keys:
     for _ in $(seq 50); do ls "$dir"/wayland-* >/dev/null 2>&1 && break; sleep 0.1; done
     display=$(basename "$(ls "$dir"/wayland-* | grep -v lock | head -n1)")
     export XDG_RUNTIME_DIR="$dir" WAYLAND_DISPLAY="$display" XDG_SESSION_TYPE=wayland
-    {{ deck }} SLINT_BACKEND=winit {{ nix }} cargo run --profile {{ profile }} \
+    {{ deck }} SLINT_BACKEND=winit-software {{ nix }} cargo run --profile {{ profile }} \
         >target/shots/{{ name }}.log 2>&1 &
     sleep {{ delay }}
     for key in {{ keys }}; do {{ nix }} wtype -s 300 -k "$key" -s 300; done

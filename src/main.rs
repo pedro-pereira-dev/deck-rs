@@ -6,8 +6,8 @@ mod navigation;
 
 slint::include_modules!();
 
-use menu::{Menu, MenuAction};
-use slint::{ComponentHandle, ModelRc, SharedString, Timer, TimerMode, VecModel};
+use menu::{MenuAction, MenuItem};
+use slint::{ComponentHandle, Model, ModelRc, SharedString, Timer, TimerMode, VecModel};
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::rc::Rc;
@@ -16,35 +16,41 @@ use std::time::Duration;
 
 struct AppState {
     busy: bool,
+    cells: Rc<VecModel<Cell>>,
+    categories: Vec<String>,
     config: config::Config,
-    current: Menu,
-    category_index: usize,
-    item_index: usize,
     error_message: Option<String>,
+    position: navigation::Position,
+    root: Vec<MenuItem>,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (config, config_error) = config::load();
-    let category_names = menu::categories(&config);
-    let category_index = category_names.iter().position(|name| name == "Favorites").unwrap_or(0);
-    let current = menu::build(&config, &category_names[category_index]);
+    let categories = menu::categories(&config);
+    let category = categories.iter().position(|name| name == "Favorites").unwrap_or(0);
     let state = Rc::new(RefCell::new(AppState {
         busy: false,
+        cells: Rc::new(VecModel::default()),
+        root: menu::build(&config, &categories[category]),
+        categories,
         config,
-        current,
-        category_index,
-        item_index: 0,
         error_message: config_error,
+        position: navigation::Position::new(category),
     }));
     let window = AppWindow::new()?;
     let weak_window = window.as_weak();
-    let theme = window.global::<Theme>();
-    theme.set_background(color(&state.borrow().config.ui.background, "#080b12"));
-    theme.set_accent(color(&state.borrow().config.ui.accent, "#8ab4f8"));
-    window.set_clock_text(clock_text().into());
+    window.set_clock_date(clock_text("+%d/%m").into());
+    window.set_clock_time(clock_text("+%H:%M").into());
 
     apply_config(&window, &state.borrow().config);
     apply_input_config(&window, &state.borrow().config.input.keyboard);
+    {
+        let state = state.borrow();
+        let icons = menu::category_icons(&state.config, &state.categories);
+        window.set_categories(strings(&state.categories));
+        window.set_category_icons(strings(&icons));
+        window.set_cells(ModelRc::from(state.cells.clone()));
+    }
     update_window(&window, &state.borrow());
 
     let (sender, receiver) = mpsc::channel();
@@ -85,7 +91,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let clock_timer = Timer::default();
     clock_timer.start(TimerMode::Repeated, Duration::from_secs(30), move || {
         if let Some(window) = clock_window.upgrade() {
-            window.set_clock_text(clock_text().into());
+            window.set_clock_date(clock_text("+%d/%m").into());
+            window.set_clock_time(clock_text("+%H:%M").into());
         }
     });
 
@@ -104,21 +111,20 @@ fn wire_callbacks(window: &AppWindow, state: Rc<RefCell<AppState>>, action_sende
     });
 
     let weak_window = window.as_weak();
-    let focus_state = state.clone();
-    window.on_focus_item(move |index| {
+    let selection_state = state.clone();
+    let selection_sender = action_sender.clone();
+    window.on_select(move || {
         if let Some(window) = weak_window.upgrade() {
-            let mut state = focus_state.borrow_mut();
-            state.item_index = (index as usize).min(state.current.items.len().saturating_sub(1));
-            update_window(&window, &state);
+            activate_selected(&window, &selection_state, &selection_sender);
         }
     });
 
     let weak_window = window.as_weak();
-    let selection_state = state.clone();
-    let selection_sender = action_sender;
-    window.on_select(move || {
+    let pick_state = state.clone();
+    window.on_pick_cell(move |column, index| {
         if let Some(window) = weak_window.upgrade() {
-            activate_selected(&window, &selection_state, &selection_sender);
+            pick_state.borrow_mut().position.pick(column as usize, index as usize);
+            activate_selected(&window, &pick_state, &action_sender);
         }
     });
 
@@ -133,33 +139,30 @@ fn wire_callbacks(window: &AppWindow, state: Rc<RefCell<AppState>>, action_sende
     let weak_window = window.as_weak();
     window.on_focus_category(move |index| {
         if let Some(window) = weak_window.upgrade() {
-            let mut state = state.borrow_mut();
-            state.category_index = (index as usize).min(state.current.categories.len().saturating_sub(1));
-            let category = state.current.categories[state.category_index].clone();
-            state.current = menu::build(&state.config, &category);
-            state.item_index = 0;
-            update_window(&window, &state);
+            go_to_category(&window, &state, index as usize);
         }
     });
 }
 
-fn apply_config(window: &AppWindow, config: &config::Config) {
-    let theme = window.global::<Theme>();
-    theme.set_accent(color(&config.ui.accent, "#8ab4f8"));
-    theme.set_background(color(&config.ui.background, "#080b12"));
-    theme.set_muted(color(&config.ui.muted, "#9198a8"));
-    theme.set_panel(color(&config.ui.panel, "#171d29"));
-    theme.set_selected(color(&config.ui.selected, "#252f40"));
-    theme.set_text(color(&config.ui.text, "#f3f5f8"));
-    theme.set_category_gap(config.ui.category_gap.max(120.0));
-    theme.set_item_gap(config.ui.item_gap.max(0.0));
-    theme.set_item_size(config.ui.item_size.clamp(16.0, 64.0));
-    window.set_subtitle(config.ui.subtitle.clone().into());
+fn strings(values: &[String]) -> ModelRc<SharedString> {
+    ModelRc::new(VecModel::from(values.iter().map(|value| value.as_str().into()).collect::<Vec<SharedString>>()))
 }
 
-fn clock_text() -> String {
+fn apply_config(window: &AppWindow, config: &config::Config) {
+    let theme = window.global::<Theme>();
+    theme.set_animation(config.ui.animation_ms as i64);
+    theme.set_background(color(&config.ui.background, "#000000"));
+    theme.set_font_family(config.ui.font_family.clone().into());
+    theme.set_text(color(&config.ui.text, "#ffffff"));
+    if let Ok(image) = slint::Image::load_from_path(std::path::Path::new(&config.ui.background_image)) {
+        theme.set_background_image(image);
+        theme.set_has_background_image(true);
+    }
+}
+
+fn clock_text(format: &str) -> String {
     std::process::Command::new("date")
-        .args(["+%H:%M"])
+        .arg(format)
         .output()
         .ok()
         .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_owned())
@@ -236,53 +239,68 @@ fn parse_color(value: &str) -> Option<u32> {
 }
 
 fn update_window(window: &AppWindow, state: &AppState) {
-    let (labels, icons, values): (Vec<_>, Vec<_>, Vec<_>) = state
-        .current
-        .items
-        .iter()
-        .map(|item| (item.label.as_str().into(), item.glyph.as_str().into(), item.value.as_str().into()))
-        .multiunzip();
-    let categories: Vec<SharedString> = state.current.categories.iter().cloned().map(Into::into).collect();
-    let category_icons: Vec<SharedString> = state.current.category_icons.iter().cloned().map(Into::into).collect();
-    window.set_categories(ModelRc::new(VecModel::from(categories)));
-    window.set_category_icons(ModelRc::new(VecModel::from(category_icons)));
-    window.set_items(ModelRc::new(VecModel::from(labels)));
-    window.set_item_icons(ModelRc::new(VecModel::from(icons)));
-    window.set_item_values(ModelRc::new(VecModel::from(values)));
-    window.set_selected_category(state.category_index as i32);
-    window.set_selected_item(state.item_index as i32);
-    window.set_error_message(state.error_message.clone().unwrap_or_default().into());
+    let columns = menu::columns(&state.root, &state.position.rows);
+    let depth = columns.len() - 1;
+    let mut cells = Vec::new();
+    for (column, items) in columns.iter().enumerate().skip(depth.saturating_sub(1)) {
+        for (index, item) in items.iter().enumerate() {
+            cells.push(Cell {
+                active: column == depth,
+                column: column as i32,
+                focus: state.position.rows[column] as i32,
+                glyph: item.glyph.as_str().into(),
+                index: index as i32,
+                label: item.label.as_str().into(),
+                subtitle: item.subtitle.as_str().into(),
+            });
+        }
+    }
+    if state.cells.row_count() == cells.len() {
+        for (row, cell) in cells.into_iter().enumerate() {
+            state.cells.set_row_data(row, cell);
+        }
+    } else {
+        state.cells.set_vec(cells);
+    }
     window.set_busy(state.busy);
+    window.set_category_title(state.categories[state.position.category].as_str().into());
+    window.set_depth(depth as i32);
+    window.set_error_message(state.error_message.clone().unwrap_or_default().into());
+    window.set_selected_category(state.position.category as i32);
+}
+
+fn go_to_category(window: &AppWindow, state: &Rc<RefCell<AppState>>, category: usize) {
+    let mut state = state.borrow_mut();
+    let category = category.min(state.categories.len() - 1);
+    state.root = menu::build(&state.config, &state.categories[category]);
+    state.position.go_to_category(category);
+    update_window(window, &state);
 }
 
 fn navigate(window: &AppWindow, state: &Rc<RefCell<AppState>>, command: &str) {
-    if command == "select" {
-        return;
-    }
-    let mut state = state.borrow_mut();
+    let (depth, category_count, row_count, home, current) = {
+        let state = state.borrow();
+        let columns = menu::columns(&state.root, &state.position.rows);
+        let home = state.categories.iter().position(|name| name == "Favorites").unwrap_or(0);
+        (columns.len() - 1, state.categories.len(), columns[columns.len() - 1].len(), home, state.position.category)
+    };
     match command {
-        "left" | "right" => {
-            let direction = if command == "left" { -1 } else { 1 };
-            let count = state.current.categories.len();
-            state.category_index = navigation::move_selection(state.category_index, count, direction);
-            let category = state.current.categories[state.category_index].clone();
-            state.current = menu::build(&state.config, &category);
-            state.item_index = 0;
+        "left" | "right" if depth == 0 => {
+            let mut target = navigation::Position::new(current);
+            target.move_category(category_count, if command == "left" { -1 } else { 1 });
+            go_to_category(window, state, target.category);
         }
+        "left" | "back" if depth > 0 => {
+            state.borrow_mut().position.go_back();
+            update_window(window, &state.borrow());
+        }
+        "back" | "menu" => go_to_category(window, state, home),
         "up" | "down" => {
-            let direction = if command == "up" { -1 } else { 1 };
-            state.item_index = navigation::move_selection(state.item_index, state.current.items.len(), direction);
-        }
-        "back" | "menu" => {
-            if let Some(index) = state.current.categories.iter().position(|category| category == "Favorites") {
-                state.category_index = index;
-                state.current = menu::build(&state.config, "Favorites");
-                state.item_index = 0;
-            }
+            state.borrow_mut().position.move_row(row_count, if command == "up" { -1 } else { 1 });
+            update_window(window, &state.borrow());
         }
         _ => {}
     }
-    update_window(window, &state);
 }
 
 fn activate_selected(
@@ -290,10 +308,17 @@ fn activate_selected(
     state: &Rc<RefCell<AppState>>,
     action_sender: &mpsc::Sender<Result<(), String>>,
 ) {
-    let action = {
+    let (action, has_children) = {
         let state = state.borrow();
-        state.current.items.get(state.item_index).map(|item| item.action.clone())
+        let columns = menu::columns(&state.root, &state.position.rows);
+        let selected = columns.last().and_then(|items| items.get(state.position.rows[columns.len() - 1]));
+        (selected.map(|item| item.action.clone()), selected.is_some_and(|item| !item.children.is_empty()))
     };
+    if has_children {
+        state.borrow_mut().position.enter();
+        update_window(window, &state.borrow());
+        return;
+    }
     match action {
         Some(MenuAction::Launch(app)) => match actions::launch(app) {
             Ok(mut child) => {
@@ -318,8 +343,7 @@ fn activate_selected(
             update_window(window, &state.borrow());
             let action_sender = action_sender.clone();
             std::thread::spawn(move || {
-                let result = actions::run(command);
-                let _ = action_sender.send(result);
+                let _ = action_sender.send(actions::run(command));
             });
         }
         Some(MenuAction::None) | None => {}
@@ -330,25 +354,4 @@ fn show_error(window: &AppWindow, state: &Rc<RefCell<AppState>>, error: String) 
     let mut state = state.borrow_mut();
     state.error_message = Some(error);
     update_window(window, &state);
-}
-
-trait MultiUnzip<A, B, C> {
-    fn multiunzip(self) -> (Vec<A>, Vec<B>, Vec<C>);
-}
-
-impl<I, A, B, C> MultiUnzip<A, B, C> for I
-where
-    I: Iterator<Item = (A, B, C)>,
-{
-    fn multiunzip(self) -> (Vec<A>, Vec<B>, Vec<C>) {
-        let mut first = Vec::new();
-        let mut second = Vec::new();
-        let mut third = Vec::new();
-        for (a, b, c) in self {
-            first.push(a);
-            second.push(b);
-            third.push(c);
-        }
-        (first, second, third)
-    }
 }

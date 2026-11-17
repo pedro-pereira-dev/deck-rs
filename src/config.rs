@@ -44,39 +44,27 @@ pub struct AppConfig {
 #[derive(Clone, Deserialize)]
 #[serde(default)]
 pub struct UiConfig {
-    pub accent: String,
+    pub animation_ms: u64,
     pub background: String,
+    pub background_image: String,
     pub categories: Vec<String>,
-    pub category_gap: f32,
     pub favorites: Vec<String>,
     pub font_family: String,
     pub icons: BTreeMap<String, String>,
-    pub item_gap: f32,
-    pub item_size: f32,
-    pub muted: String,
-    pub panel: String,
-    pub selected: String,
     pub text: String,
-    pub subtitle: String,
 }
 
 impl Default for UiConfig {
     fn default() -> Self {
         Self {
-            accent: "#8ab4f8".into(),
-            background: "#080b12".into(),
+            animation_ms: 180,
+            background: "#000000".into(),
+            background_image: String::new(),
             categories: Vec::new(),
-            category_gap: 270.0,
             favorites: Vec::new(),
             font_family: "Symbols Nerd Font Mono".into(),
             icons: BTreeMap::new(),
-            item_gap: 18.0,
-            item_size: 30.0,
-            muted: "#9198a8".into(),
-            panel: "#171d29".into(),
-            selected: "#252f40".into(),
-            text: "#f3f5f8".into(),
-            subtitle: "deck-rs  /  app launcher".into(),
+            text: "#ffffff".into(),
         }
     }
 }
