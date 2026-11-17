@@ -16,9 +16,13 @@
           libGL
           libx11
           libxcursor
+          libxext
+          libxfixes
+          libxinerama
           libxi
           libxkbcommon
           libxrandr
+          libxrender
           udev
           vulkan-loader
           wayland
@@ -26,7 +30,9 @@
       mkPackage =
         pkgs: settings:
         let
-          configFile = (pkgs.formats.toml { }).generate "deck-rs-default.toml" settings;
+          configFile = (pkgs.formats.toml { }).generate "deck-rs-default.toml" (
+            pkgs.lib.recursiveUpdate (builtins.fromTOML (builtins.readFile ./assets/config.defaults.toml)) settings
+          );
         in
         pkgs.rustPlatform.buildRustPackage {
           pname = "deck-rs";
@@ -100,6 +106,9 @@
           packages = with pkgs; [
             cargo
             clippy
+            clang
+            libclang
+            fontconfig
             fswatch
             grim
             just

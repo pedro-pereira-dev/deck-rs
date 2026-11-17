@@ -1,9 +1,57 @@
+[commands]
+audio_mute = ["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"]
+audio_volume_down = ["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%-"]
+audio_volume_up = ["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%+"]
+bluetooth_off = ["bluetoothctl", "power", "off"]
+bluetooth_on = ["bluetoothctl", "power", "on"]
+bluetooth_scan = ["bluetoothctl", "scan", "on"]
+exit_session = ["loginctl", "terminate-session", "$XDG_SESSION_ID"]
+power_off = ["systemctl", "poweroff"]
+reboot = ["systemctl", "reboot"]
+suspend = ["systemctl", "suspend"]
+wifi_off = ["nmcli", "radio", "wifi", "off"]
+wifi_on = ["nmcli", "radio", "wifi", "on"]
+wifi_scan = ["nmcli", "device", "wifi", "rescan"]
+
+[input]
+stick_threshold = 0.6
+
+[input.gamepad]
+dpad_down = "down"
+dpad_left = "left"
+dpad_right = "right"
+dpad_up = "up"
+east = "back"
+mode = "menu"
+select = "back"
+south = "select"
+stick_down = "down"
+stick_left = "left"
+stick_right = "right"
+stick_up = "up"
+start = "menu"
+
+[input.keyboard]
+back = "Escape"
+down = "DownArrow"
+left = "LeftArrow"
+menu = "Home"
+right = "RightArrow"
+select = "Enter"
+up = "UpArrow"
+
 [ui]
-animation_frequency = 120
-background = ""
+accent = "#8ab4f8"
+background = "#080b12"
 categories = []
+category_gap = 270
 favorites = []
-font = "assets/SymbolsNerdFontMono-Regular.ttf"
 font_family = "Symbols Nerd Font Mono"
-ping = "9.9.9.9"
-navigation_sound = "assets/nav.wav"
+icons = {}
+item_gap = 18
+item_size = 30
+muted = "#9198a8"
+panel = "#171d29"
+selected = "#252f40"
+subtitle = "deck-rs  /  app launcher"
+text = "#f3f5f8"

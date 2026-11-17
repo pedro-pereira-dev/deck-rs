@@ -1,0 +1,76 @@
+import { CrossMenu } from "cross_menu.slint";
+import { Theme } from "theme.slint";
+import { LinearProgressIndicator } from "@material";
+
+export { Theme } from "theme.slint";
+
+export component AppWindow inherits Window {
+    in property <[string]> categories;
+    in property <[string]> category-icons;
+    in property <[string]> items;
+    in property <[string]> item-icons;
+    in property <[string]> item-values;
+    in property <int> selected-category;
+    in property <int> selected-item;
+    in property <string> error-message;
+    in property <bool> busy;
+    in property <string> clock-text;
+    in property <string> subtitle;
+    in property <string> key_back;
+    in property <string> key_down;
+    in property <string> key_left;
+    in property <string> key_menu;
+    in property <string> key_right;
+    in property <string> key_select;
+    in property <string> key_up;
+    in property <length> category-gap: Theme.category-gap;
+    in property <length> item-gap: Theme.item-gap;
+    in property <length> item-size: Theme.item-size;
+    callback navigate(string);
+    callback select();
+    callback focus-item(int);
+    callback focus-category(int);
+    callback scroll-items(float);
+
+    title: "deck-rs";
+    background: Theme.background;
+    preferred-width: 1280px;
+    preferred-height: 720px;
+    forward-focus: menu-focus;
+
+    menu-focus := CrossMenu {
+        categories: root.categories;
+        category-icons: root.category-icons;
+        items: root.items;
+        item-icons: root.item-icons;
+        item-values: root.item-values;
+        selected-category: root.selected-category;
+        selected-item: root.selected-item;
+        error-message: root.error-message;
+        clock-text: root.clock-text;
+        subtitle: root.subtitle;
+        key-back: root.key_back;
+        key-down: root.key_down;
+        key-left: root.key_left;
+        key-menu: root.key_menu;
+        key-right: root.key_right;
+        key-select: root.key_select;
+        key-up: root.key_up;
+        category-gap: root.category-gap;
+        item-gap: root.item-gap;
+        item-size: root.item-size;
+        navigate(direction) => { root.navigate(direction); }
+        select => { root.select(); }
+        focus-item(index) => { root.focus-item(index); }
+        focus-category(index) => { root.focus-category(index); }
+        scroll-items(delta) => { root.scroll-items(delta); }
+    }
+
+    if root.busy : LinearProgressIndicator {
+        x: 64px;
+        y: 12px;
+        width: parent.width - 128px;
+        progress: 0;
+        indeterminate: true;
+    }
+}

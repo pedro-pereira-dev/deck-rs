@@ -1,160 +1,124 @@
 # deck-rs
 
-Fullscreen TV launcher built with [iced](https://iced.rs), laid out like the PlayStation 3 XrossMediaBar: a
-horizontal row of categories with the focused category's items listed vertically beneath it. Controlled by
-keyboard, remote, gamepad or mouse.
+Fullscreen ten-foot launcher for TV and handheld systems. The horizontal cross menu uses Slint, with keyboard,
+gamepad, and mouse controls. Rendering uses the Slint winit backend and FemtoVG.
 
-## Architecture
+## Structure
 
-The source is organized by responsibility:
-
-- `src/deck.rs` owns Iced application state, navigation, updates and subscriptions.
-- `src/input.rs` translates keyboard and gamepad events into navigation messages.
-- `src/menu.rs` builds app, status and system-control menus.
-- `src/view.rs` draws the interface and translates mouse events into the same messages.
-- `src/config.rs` loads defaults and user settings.
-- `src/system/` queries host and services, performs actions, and launches processes.
-- `src/main.rs` starts the application.
-
-System queries run concurrently when a snapshot is refreshed. Menus are rebuilt from each new snapshot and
-selection is clamped to available rows. Menu movement uses a short 120 fps slide by default; no animation frames are
-scheduled when the target position has been reached.
+- `ui/` contains the Slint window, cross menu, theme, and menu item.
+- `src/config.rs` loads the bundled TOML defaults and optional user configuration.
+- `src/menu.rs` builds categories and menu actions from the configuration.
+- `src/navigation.rs` contains the small selection helper.
+- `src/input_gamepad.rs` reads controller input through gilrs.
+- `src/actions.rs` launches applications and configured commands.
+- `src/main.rs` connects state, inputs, and the Slint view.
+- `material-1.1.0/` is the official Slint Material component library. This launcher uses its component library
+  setup and can import its progress indicators and inputs when they are useful.
 
 ## Controls
 
-| Action | Keyboard / remote       | Gamepad           |
-| ------ | ----------------------- | ----------------- |
-| Move   | Arrows                  | D-pad, left stick |
-| Select | Enter, Space, Select    | South (A / Cross) |
-| Back   | Escape, Backspace, Back | East (B / Circle) |
-| Power  | Home, Menu, Power       | Start, Guide      |
+| Action | Keyboard | Gamepad |
+| --- | --- | --- |
+| Move | Arrow keys | D-pad or left stick |
+| Select | Enter or Space | South / Cross / A |
+| Back | Escape | East / Circle / B |
+| Menu | Home | Start or Guide |
 
-Left and right switch categories, up and down move through items and select runs an item. Items with options
-open a submenu on the right, up to three levels deep (settings, bluetooth, device, action); back or left closes
-one level. Mouse clicks focus or run items, right click goes back and the wheel scrolls. Every move plays a
-navigation sound. The top right shows the time, date, cpu, temperature, memory, disk, ping, volume and the
-bluetooth state with connected devices.
+Mouse click selects menu items and categories. The wheel changes the selected row, and right click goes back.
+Launching an app hides the launcher until that process exits.
 
 ## Configuration
 
-Defaults live in `assets/config.defaults.toml` and are embedded in the binary. Nix package settings are baked
-into that embedded file when the package is built. The user configuration is layered over those defaults
-(tables merge, arrays replace):
-
-1. the embedded `assets/config.defaults.toml` (including Nix package settings, if configured)
-2. `DECK_CONFIG`, or `$XDG_CONFIG_HOME/deck-rs/config.toml` when unset
+`assets/config.defaults.toml` is compiled into the binary. A user TOML overlays it at startup; tables merge and
+arrays replace. Set `DECK_CONFIG`, or use `$XDG_CONFIG_HOME/deck-rs/config.toml` (default:
+`~/.config/deck-rs/config.toml`). Invalid TOML is shown in the launcher.
 
 ```toml
 [[app]]
+name = "steam"
 category = "games"
 command = ["steam", "-gamepadui"]
-env = { GDK_BACKEND = "wayland,x11" }
 icon = "\U000F04D3"
-name = "steam"
+env = { GDK_BACKEND = "wayland,x11" }
 
 [ui]
-animation_frequency = 120
-background = "/path/to/wallpaper.png"
+accent = "#8ab4f8"
+background = "#080b12"
+muted = "#9198a8"
+panel = "#171d29"
+selected = "#252f40"
+text = "#f3f5f8"
+subtitle = "Living room"
+font_family = "Symbols Nerd Font Mono"
+category_gap = 270
+item_gap = 18
+item_size = 30
 categories = ["games"]
 favorites = ["steam"]
-font = "/path/to/your-font.ttf"
-font_family = "Symbols Nerd Font Mono"
 icons = { games = "\U000F0297" }
-ping = "9.9.9.9"
-navigation_sound = "/path/to/nav.wav"
+
+[input]
+stick_threshold = 0.6
+
+[input.keyboard]
+left = "LeftArrow"
+right = "RightArrow"
+up = "UpArrow"
+down = "DownArrow"
+select = "Enter"
+back = "Escape"
+menu = "Home"
+
+[input.gamepad]
+dpad_left = "left"
+dpad_right = "right"
+dpad_up = "up"
+dpad_down = "down"
+south = "select"
+east = "back"
+start = "menu"
+mode = "menu"
+select = "back"
+stick_up = "up"
+stick_down = "down"
+stick_left = "left"
+stick_right = "right"
+
+[commands]
+suspend = ["systemctl", "suspend"]
+power_off = ["systemctl", "poweroff"]
+reboot = ["systemctl", "reboot"]
+bluetooth_on = ["bluetoothctl", "power", "on"]
+bluetooth_off = ["bluetoothctl", "power", "off"]
+wifi_on = ["nmcli", "radio", "wifi", "on"]
+wifi_off = ["nmcli", "radio", "wifi", "off"]
+audio_mute = ["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"]
+exit_session = ["loginctl", "terminate-session", "$XDG_SESSION_ID"]
 ```
 
-`Home` and `Favorites` are always shown first, followed by configured extra categories, then `Settings` and
-`Power`; Favorites is focused at startup. `[ui].categories` adds app categories between Favorites and Settings
-and cannot remove or reorder the built-ins. Category matching and duplicate filtering are case-insensitive. Each
-extra category lists the `[[app]]` entries with that `category`, using its glyph from `[ui].icons`. `favorites`
-names apps from any category and always ends with suspend. The default font and sound use the bundled assets; an empty
-`background` is black and an empty `navigation_sound` uses the embedded click through `pw-play` or `paplay`.
-`[ui].animation_frequency` sets the animation frame rate in frames per second; it defaults to `120`.
+`ui` properties control colors, typography, spacing, menu sizing, categories, icons, and favorites. `input.keyboard`
+maps actions to Slint key names. `input.gamepad` maps gilrs button names to navigation actions. `commands` maps the
+built-in settings and power entries to argument arrays; use arrays rather than shell strings. Commands are optional
+and a missing command is disabled.
 
-System controls are detected automatically. Audio controls appear when `wpctl` or `pactl` is installed;
-Bluetooth, Wi-Fi, power, brightness, and power-profile controls appear when their supported system services or
-devices are available. No backend selection is needed in the configuration. For Wi-Fi controls, enable iwd and
-persist `/var/lib/iwd`.
+Categories are Home, Favorites, configured application categories, Settings, and Power. The UI currently provides
+simple command entries for power, audio, Bluetooth, and Wi-Fi. Device discovery, Bluetooth pairing, Wi-Fi
+credentials, host statistics, brightness, and power profiles are not part of this minimal port yet.
 
-The Symbols Nerd Font Mono icon font is bundled with the application. Set `[ui].font` to a replacement font
-file and `[ui].font_family` to its family name. The clock uses `date`.
+## Development
 
-No apps are configured by default.
+Use Rust 1.95 or newer, Cargo, and Nix for packaged builds and the development shell.
 
-## Requirements
+| Command | Description |
+| --- | --- |
+| `just build` | Build the launcher |
+| `just run` | Run fullscreen |
+| `just format` | Format Rust and Nix |
+| `just lint` | Check formatting and Clippy |
+| `just remote` | Sync and run on `REMOTE=user@host` |
+| `just shot` | Capture a headless screenshot |
+| `just watch` | Rebuild and restart after changes |
 
-- [Rust](https://www.rust-lang.org/tools/install) and Cargo for a direct, non-flake build.
-- [Nix](https://nixos.org/download) for the package and development shell.
-- [just](https://just.systems), or use the one provided by the development shell.
-
-Recipes run through `nix develop` automatically, or directly when already inside the development shell. Nix
-flakes only see git-tracked files, so keep `flake.nix`, `flake.lock`, `assets/config.defaults.toml` and
-the font asset tracked.
-
-## Usage
-
-| Command       | Description                                              |
-| ------------- | -------------------------------------------------------- |
-| `just`        | List recipes                                             |
-| `just build`  | Build the app                                            |
-| `just check`  | Run formatting and lint checks                          |
-| `just format` | Format Rust and Nix files                                |
-| `just lint`   | Check formatting and run clippy                          |
-| `just remote` | Sync to `REMOTE=user@host` and run it on change          |
-| `just run`    | Run the app                                              |
-| `just shot`   | Screenshot headlessly, e.g. `just shot power Home Right` |
-| `just watch`  | Rebuild and rerun the app on change                      |
-
-Screenshots are written to `target/shots/`; `RESOLUTION` (default `3840x2160`) and `DELAY` (default `3`) tune
-`just shot`.
-
-The build profile defaults to `dev`; override it with `PROFILE`:
-
-```sh
-PROFILE=release just build
-PROFILE=release just run
-```
-
-## Development shell
-
-```sh
-nix --extra-experimental-features "flakes nix-command" develop
-```
-
-Provides the Rust toolchain, rust-analyzer, just, nixfmt, Nix and the runtime libraries iced needs.
-
-Update dependencies with `nix flake update --extra-experimental-features "flakes nix-command"`.
-
-## Install on NixOS
-
-The flake exports `packages.<system>.default`, `nixosModules.default` and `homeManagerModules.default`. Set
-`programs.deck-rs.settings` to override the defaults. Replace `<owner>` with the account hosting this repository:
-
-```nix
-{
-  inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    deck-rs.url = "github:<owner>/deck-rs";
-    deck-rs.inputs.nixpkgs.follows = "nixpkgs";
-  };
-
-  outputs = { nixpkgs, deck-rs, ... }: {
-    nixosConfigurations.my-host = nixpkgs.lib.nixosSystem {
-      system = "x86_64-linux";
-      modules = [
-        deck-rs.nixosModules.default
-        {
-          programs.deck-rs = {
-            enable = true;
-          };
-        }
-      ];
-    };
-  };
-}
-```
-
-Rebuild with `sudo nixos-rebuild switch --flake .#my-host`. For a local checkout, use
-`deck-rs.url = "path:/path/to/deck-rs";`. Home Manager users add `deck-rs.homeManagerModules.default` and set
-the same options. For a standalone package with custom settings, use `deck-rs.lib.settingsPackage pkgs settings`.
+`PROFILE` defaults to `dev`; `RESOLUTION` defaults to `3840x2160`; `DELAY` defaults to `3` for screenshots.
+Material Components 1.1.0 is included from the official release archive. The flake supports x86_64-linux and
+aarch64-linux and exports the package, NixOS module, Home Manager module, and settings package.

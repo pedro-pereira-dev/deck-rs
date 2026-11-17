@@ -1,0 +1,170 @@
+import { Theme } from "theme.slint";
+import { LauncherItem } from "menu_item.slint";
+
+export component CrossMenu inherits Rectangle {
+    in property <[string]> categories;
+    in property <[string]> category-icons;
+    in property <[string]> items;
+    in property <[string]> item-icons;
+    in property <[string]> item-values;
+    in property <int> selected-category;
+    in property <int> selected-item;
+    in property <string> error-message;
+    in property <string> clock-text;
+    in property <string> subtitle;
+    in property <string> key_back: "Escape";
+    in property <string> key_down: "ArrowDown";
+    in property <string> key_left: "ArrowLeft";
+    in property <string> key_menu: "Home";
+    in property <string> key_right: "ArrowRight";
+    in property <string> key_select: "Enter";
+    in property <string> key_up: "ArrowUp";
+    in property <length> category-gap: Theme.category-gap;
+    in property <length> item-gap: Theme.item-gap;
+    in property <length> item-size: Theme.item-size;
+    callback navigate(string);
+    callback select();
+    callback focus-item(int);
+    callback focus-category(int);
+    callback scroll-items(float);
+    property <float> scale: max(1.0, min(self.width / 1280px, self.height / 720px));
+
+    width: 100%;
+    height: 100%;
+    forward-focus: input-focus;
+    background: Theme.background;
+
+    Rectangle {
+        x: 0;
+        y: 0;
+        width: 100%;
+        height: 6px * root.scale;
+        background: Theme.accent;
+        opacity: 0.8;
+    }
+
+    TouchArea {
+        width: 100%;
+        height: 100%;
+        scroll-event(event) => {
+            if event.delta-y != 0 {
+                root.scroll-items(event.delta-y / 1px);
+                return accept;
+            }
+            reject
+        }
+    }
+
+    Text {
+        x: 64px * root.scale;
+        y: 42px * root.scale;
+        color: Theme.text;
+        font-size: 20px * root.scale;
+        text: root.subtitle;
+    }
+
+    Text {
+        x: parent.width - self.width - 64px * root.scale;
+        y: 42px * root.scale;
+        color: Theme.muted;
+        font-size: 20px * root.scale;
+        text: root.clock-text;
+    }
+
+    for category[index] in categories: Rectangle {
+        x: parent.width / 2 + (index - root.selected-category) * root.category-gap * root.scale - self.width / 2;
+        y: parent.height * 0.27;
+        width: 220px * root.scale;
+        height: 74px * root.scale;
+        opacity: index == root.selected-category ? 1 : 0.52;
+        animate x, opacity { duration: 220ms; easing: ease-out; }
+
+        TouchArea {
+            width: parent.width;
+            height: parent.height;
+            clicked => { root.focus-category(index); }
+        }
+
+        Text {
+            x: 0;
+            width: parent.width;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            color: index == root.selected-category ? Theme.accent : Theme.text;
+            font-size: (index == root.selected-category ? 32px : 24px) * root.scale;
+            text: root.category-icons[index] + "  " + category;
+            animate font-size { duration: 140ms; }
+        }
+
+    }
+
+    Rectangle {
+        x: 0;
+        y: parent.height * 0.37;
+        width: parent.width;
+        height: 1px;
+        background: #ffffff18;
+    }
+
+    Rectangle {
+        x: 0;
+        y: parent.height * 0.37;
+        width: parent.width;
+        height: parent.height * 0.57;
+        clip: true;
+
+        for item[index] in items: LauncherItem {
+            x: parent.width * 0.14;
+            y: parent.height * 0.088 + (index - root.selected-item) * (64px + root.item-gap) * root.scale;
+            glyph: root.item-icons[index];
+            label: item;
+            value: root.item-values[index];
+            selected: index == root.selected-item;
+            item-size: root.item-size * root.scale;
+            scale: root.scale;
+            animate y { duration: 170ms; easing: ease-out; }
+            clicked => { root.focus-item(index); root.select(); }
+            back => { root.navigate("back"); }
+        }
+    }
+
+    if root.error-message != "": Text {
+        x: 64px * root.scale;
+        y: parent.height - 70px * root.scale;
+        width: parent.width - 128px * root.scale;
+        color: #ff8a80;
+        font-size: 18px * root.scale;
+        text: root.error-message;
+    }
+
+    Rectangle {
+        x: 64px * root.scale;
+        y: parent.height - 48px * root.scale;
+        width: parent.width - 128px * root.scale;
+        height: 1px * root.scale;
+        background: #ffffff18;
+    }
+
+    input-focus := FocusScope {
+        key-pressed(event) => {
+            if event.text == root.key_left { root.navigate("left"); }
+            else if event.text == root.key_right { root.navigate("right"); }
+            else if event.text == root.key_up { root.navigate("up"); }
+            else if event.text == root.key_down { root.navigate("down"); }
+            else if event.text == root.key_select || event.text == " " { root.select(); }
+            else if event.text == root.key_back { root.navigate("back"); }
+            else if event.text == root.key_menu { root.navigate("menu"); }
+            accept
+        }
+    }
+
+    Text {
+        x: 64px * root.scale;
+        y: parent.height - 38px * root.scale;
+        color: Theme.muted;
+        font-size: 16px * root.scale;
+        text: "← → category     ↑ ↓ select     Enter launch     Esc back";
+    }
+
+    init => { input-focus.focus(); }
+}

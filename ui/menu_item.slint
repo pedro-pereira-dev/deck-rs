@@ -1,0 +1,58 @@
+import { Theme } from "theme.slint";
+
+export component LauncherItem {
+    in property <string> glyph;
+    in property <string> label;
+    in property <string> value;
+    in property <bool> selected;
+    in property <length> item-size: Theme.item-size;
+    in property <float> scale: 1;
+    callback clicked();
+    callback back();
+
+    height: 64px * root.scale;
+    width: 590px * root.scale;
+
+    background := Rectangle {
+        background: root.selected ? Theme.selected : transparent;
+        border-radius: 12px * root.scale;
+        animate background { duration: 120ms; }
+    }
+
+    TouchArea {
+        clicked => { root.clicked(); }
+        pointer-event(event) => {
+            if event.kind == PointerEventKind.down && event.button == PointerEventButton.right {
+                root.back();
+            }
+        }
+    }
+
+    Text {
+        x: 22px * root.scale;
+        width: 48px * root.scale;
+        vertical-alignment: center;
+        font-family: Theme.font-family;
+        font-size: root.item-size;
+        color: root.selected ? Theme.accent : Theme.muted;
+        text: root.glyph;
+    }
+
+    Text {
+        x: 82px * root.scale;
+        width: parent.width - 190px * root.scale;
+        vertical-alignment: center;
+        color: Theme.text;
+        font-size: (root.selected ? 26px : 22px) * root.scale;
+        text: root.label;
+        animate font-size { duration: 120ms; }
+    }
+
+    Text {
+        x: parent.width - self.width - 22px * root.scale;
+        vertical-alignment: center;
+        color: Theme.muted;
+        font-size: 18px * root.scale;
+        text: root.value;
+    }
+}

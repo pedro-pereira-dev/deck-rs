@@ -1,15 +1,23 @@
 [package]
+build = "build.rs"
 edition = "2024"
 name = "deck-rs"
-version = "0.1.0"
+version = "0.2.0"
 
 [dependencies]
 gilrs = "0.11"
-iced = { features = ["advanced", "canvas", "image", "tokio"], version = "0.14" }
 serde = { features = ["derive"], version = "1" }
-tokio = { features = ["process", "sync", "time"], version = "1" }
+slint = { version = "~1.18.1", default-features = false, features = [
+    "std",
+    "compat-1-18",
+    "backend-winit-wayland",
+    "backend-winit-x11",
+    "renderer-femtovg",
+] }
 toml = "1"
-zbus = { features = ["tokio"], version = "5" }
+
+[build-dependencies]
+slint-build = "~1.18.1"
 
 [profile.dev]
 debug = "line-tables-only"
