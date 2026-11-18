@@ -1,5 +1,5 @@
 [package]
-build = "build.rs"
+build = "src/build.rs"
 edition = "2024"
 name = "deck-rs"
 version = "0.2.0"

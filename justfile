@@ -53,7 +53,7 @@ remote:
     }
     signature() {
         { find src assets ui -type f -print0; \
-          printf '%s\0' Cargo.toml Cargo.lock build.rs flake.nix flake.lock; } |
+          printf '%s\0' Cargo.toml Cargo.lock src/build.rs flake.nix flake.lock; } |
             sort -z | xargs -0 sha256sum | sha256sum
     }
     ssh {{ remote }} "mkdir -p {{ remote_dir }}"
@@ -97,5 +97,5 @@ shot name="home" *keys:
 
 watch *args:
     {{ nix }} watchexec --restart --watch src --watch ui --watch assets \
-        --watch build.rs --watch Cargo.toml -- \
+        --watch src/build.rs --watch Cargo.toml -- \
         cargo run --profile {{ profile }} {{ args }}
