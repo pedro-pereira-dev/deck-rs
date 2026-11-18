@@ -37,7 +37,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         error_message: config_error,
         position: navigation::Position::new(category),
     }));
-    let window = AppWindow::new()?;
+    let window = DeckWindow::new()?;
     let weak_window = window.as_weak();
     window.set_clock_date(clock_text("+%d/%m").into());
     window.set_clock_time(clock_text("+%H:%M").into());
@@ -101,7 +101,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn wire_callbacks(window: &AppWindow, state: Rc<RefCell<AppState>>, action_sender: mpsc::Sender<Result<(), String>>) {
+fn wire_callbacks(window: &DeckWindow, state: Rc<RefCell<AppState>>, action_sender: mpsc::Sender<Result<(), String>>) {
     let weak_window = window.as_weak();
     let navigation_state = state.clone();
     window.on_navigate(move |command| {
@@ -148,7 +148,7 @@ fn strings(values: &[String]) -> ModelRc<SharedString> {
     ModelRc::new(VecModel::from(values.iter().map(|value| value.as_str().into()).collect::<Vec<SharedString>>()))
 }
 
-fn apply_config(window: &AppWindow, config: &config::Config) {
+fn apply_config(window: &DeckWindow, config: &config::Config) {
     let theme = window.global::<Theme>();
     theme.set_animation(config.ui.animation_ms as i64);
     theme.set_background(color(&config.ui.background, "#000000"));
@@ -169,7 +169,7 @@ fn clock_text(format: &str) -> String {
         .unwrap_or_default()
 }
 
-fn apply_input_config(window: &AppWindow, bindings: &BTreeMap<String, String>) {
+fn apply_input_config(window: &DeckWindow, bindings: &BTreeMap<String, String>) {
     let binding = |name: &str, default: &str| -> SharedString {
         let name = bindings.get(name).map_or(default, String::as_str);
         keyboard_key(name).unwrap_or_else(|| name.into())
@@ -238,7 +238,7 @@ fn parse_color(value: &str) -> Option<u32> {
     }
 }
 
-fn update_window(window: &AppWindow, state: &AppState) {
+fn update_window(window: &DeckWindow, state: &AppState) {
     let columns = menu::columns(&state.root, &state.position.rows);
     let depth = columns.len() - 1;
     let mut cells = Vec::new();
@@ -269,7 +269,7 @@ fn update_window(window: &AppWindow, state: &AppState) {
     window.set_selected_category(state.position.category as i32);
 }
 
-fn go_to_category(window: &AppWindow, state: &Rc<RefCell<AppState>>, category: usize) {
+fn go_to_category(window: &DeckWindow, state: &Rc<RefCell<AppState>>, category: usize) {
     let mut state = state.borrow_mut();
     let category = category.min(state.categories.len() - 1);
     state.root = menu::build(&state.config, &state.categories[category]);
@@ -277,7 +277,7 @@ fn go_to_category(window: &AppWindow, state: &Rc<RefCell<AppState>>, category: u
     update_window(window, &state);
 }
 
-fn navigate(window: &AppWindow, state: &Rc<RefCell<AppState>>, command: &str) {
+fn navigate(window: &DeckWindow, state: &Rc<RefCell<AppState>>, command: &str) {
     let (depth, category_count, row_count, home, current) = {
         let state = state.borrow();
         let columns = menu::columns(&state.root, &state.position.rows);
@@ -304,7 +304,7 @@ fn navigate(window: &AppWindow, state: &Rc<RefCell<AppState>>, command: &str) {
 }
 
 fn activate_selected(
-    window: &AppWindow,
+    window: &DeckWindow,
     state: &Rc<RefCell<AppState>>,
     action_sender: &mpsc::Sender<Result<(), String>>,
 ) {
@@ -332,6 +332,7 @@ fn activate_selected(
                     let _ = slint::invoke_from_event_loop(move || {
                         if let Some(window) = weak_window.upgrade() {
                             let _ = window.window().show();
+                            window.window().set_fullscreen(true);
                         }
                     });
                 });
@@ -350,7 +351,7 @@ fn activate_selected(
     }
 }
 
-fn show_error(window: &AppWindow, state: &Rc<RefCell<AppState>>, error: String) {
+fn show_error(window: &DeckWindow, state: &Rc<RefCell<AppState>>, error: String) {
     let mut state = state.borrow_mut();
     state.error_message = Some(error);
     update_window(window, &state);

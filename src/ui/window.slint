@@ -1,20 +1,22 @@
-import { ProgressIndicator } from "std-widgets.slint";
-import { Cell, Xmb } from "xmb.slint";
 import "../../assets/SymbolsNerdFontMono-Regular.ttf";
+import { Cell, Xmb } from "xmb.slint";
+import { ProgressIndicator } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 
 export { Cell } from "xmb.slint";
 export { Theme } from "theme.slint";
 
-export component AppWindow inherits Window {
-    in property <bool> busy;
+export component DeckWindow inherits Window {
+
+    in property <[Cell]> cells;
     in property <[string]> categories;
     in property <[string]> category-icons;
+    in property <bool> busy;
+    in property <int> depth;
+    in property <int> selected-category;
     in property <string> category-title;
-    in property <[Cell]> cells;
     in property <string> clock-date;
     in property <string> clock-time;
-    in property <int> depth;
     in property <string> error-message;
     in property <string> key_back;
     in property <string> key_down;
@@ -23,7 +25,7 @@ export component AppWindow inherits Window {
     in property <string> key_right;
     in property <string> key_select;
     in property <string> key_up;
-    in property <int> selected-category;
+
     callback focus-category(int);
     callback navigate(string);
     callback pick-cell(int, int);
@@ -32,8 +34,8 @@ export component AppWindow inherits Window {
 
     background: Theme.background;
     forward-focus: menu-focus;
-    preferred-height: 720px;
-    preferred-width: 1280px;
+    preferred-height: 1080px;
+    preferred-width: 1920px;
     title: "deck-rs";
 
     menu-focus := Xmb {
