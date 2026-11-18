@@ -12,8 +12,6 @@ gamepad, and mouse controls. Rendering uses the Slint winit backend and FemtoVG.
 - `src/input_gamepad.rs` reads controller input through gilrs.
 - `src/actions.rs` launches applications and configured commands.
 - `src/main.rs` connects state, inputs, and the Slint view.
-- `material-1.1.0/` is the official Slint Material component library. This launcher uses its component library
-  setup and can import its progress indicators and inputs when they are useful.
 
 ## Controls
 
@@ -120,5 +118,5 @@ Use Rust 1.95 or newer, Cargo, and Nix for packaged builds and the development s
 | `just watch` | Rebuild and restart after changes |
 
 `PROFILE` defaults to `dev`; `RESOLUTION` defaults to `3840x2160`; `DELAY` defaults to `3` for screenshots.
-Material Components 1.1.0 is included from the official release archive. The flake supports x86_64-linux and
-aarch64-linux and exports the package, NixOS module, Home Manager module, and settings package.
+The flake supports x86_64-linux and aarch64-linux and exports the package, NixOS module, Home Manager module, and
+settings package.

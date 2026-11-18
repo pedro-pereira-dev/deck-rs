@@ -1,4 +1,4 @@
-import { LinearProgressIndicator } from "@material";
+import { ProgressIndicator } from "std-widgets.slint";
 import { Cell, Xmb } from "xmb.slint";
 import "../assets/SymbolsNerdFontMono-Regular.ttf";
 import { Theme } from "theme.slint";
@@ -60,7 +60,7 @@ export component AppWindow inherits Window {
         select => { root.select(); }
     }
 
-    if root.busy: LinearProgressIndicator {
+    if root.busy: ProgressIndicator {
         indeterminate: true;
         progress: 0;
         width: parent.width - 128px;
