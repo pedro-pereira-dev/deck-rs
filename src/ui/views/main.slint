@@ -1,69 +1,40 @@
-import { HeaderDetails } from "../components/header-details.slint";
-import { HeaderTitle } from "../components/header-title.slint";
-import { Cell, Xmb } from "../components/xmb.slint";
+import { Theme } from "../theme.slint";
+import { Clock } from "../components/clock.slint";
 
 export component MainView inherits Rectangle {
-    in property <[string]> categories;
-    in property <[string]> category-icons;
-    in property <string> category-title;
-    in property <[Cell]> cells;
     in property <string> clock-date;
     in property <string> clock-time;
-    in property <int> depth;
-    in property <string> error-message;
-    in property <string> key_back: "Escape";
-    in property <string> key_down: "DownArrow";
-    in property <string> key_left: "LeftArrow";
-    in property <string> key_menu: "Home";
-    in property <string> key_right: "RightArrow";
-    in property <string> key_select: "Return";
-    in property <string> key_up: "UpArrow";
-    in property <int> selected-category;
-    callback focus-category(int);
-    callback navigate(string);
-    callback pick-cell(int, int);
-    callback scroll-items(float);
-    callback select();
+    in property <color> clock-date-color: #999999;
+    in property <float> clock-date-font-percent: 1.8;
+    in property <float> clock-box-height-percent: 0.0;
+    in property <float> clock-box-width-percent: 100.0;
+    in property <string> clock-font-family: "sans-serif";
+    in property <string> clock-horizontal-alignment: "center";
+    in property <float> clock-horizontal-padding-percent: 3.375;
+    in property <float> clock-line-spacing-percent: 3.0;
+    in property <color> clock-text-color: #ffffff;
+    in property <float> clock-time-font-percent: 11.25;
+    in property <float> clock-top-offset-percent: 3.0;
+    in property <string> clock-vertical-alignment: "top";
 
-    property <length> unit: root.height / 10;
+    background: Theme.background;
 
-    forward-focus: menu;
-
-    menu := Xmb {
-        categories: root.categories;
-        category-icons: root.category-icons;
-        cells: root.cells;
-        depth: root.depth;
-        error-message: root.error-message;
+    Clock {
+        date: root.clock-date;
+        date-color: root.clock-date-color;
+        date-font-size: root.height * root.clock-date-font-percent / 100;
+        box-height: root.height * root.clock-box-height-percent / 100;
+        box-width-percent: root.clock-box-width-percent;
+        font-family: root.clock-font-family;
         height: root.height;
-        key_back: root.key_back;
-        key_down: root.key_down;
-        key_left: root.key_left;
-        key_menu: root.key_menu;
-        key_right: root.key_right;
-        key_select: root.key_select;
-        key_up: root.key_up;
-        selected-category: root.selected-category;
-        width: root.width;
-        focus-category(index) => { root.focus-category(index); }
-        navigate(command) => { root.navigate(command); }
-        pick-cell(column, index) => { root.pick-cell(column, index); }
-        scroll-items(delta) => { root.scroll-items(delta); }
-        select => { root.select(); }
-    }
-
-    HeaderDetails {
-        clock-date: root.clock-date;
-        clock-time: root.clock-time;
-        height: 2 * root.unit;
-        unit: root.unit;
-        width: root.width;
-    }
-
-    HeaderTitle {
-        height: 2 * root.unit;
-        label: root.category-title;
-        unit: root.unit;
+        horizontal-alignment: root.clock-horizontal-alignment;
+        horizontal-padding: root.width * root.clock-horizontal-padding-percent / 100;
+        line-spacing: root.height * root.clock-line-spacing-percent / 100;
+        text-color: root.clock-text-color;
+        time: root.clock-time;
+        time-font-size: root.height * root.clock-time-font-percent / 100;
+        top-offset: root.height * root.clock-top-offset-percent / 100;
+        vertical-alignment: root.clock-vertical-alignment;
         width: root.width;
     }
 }

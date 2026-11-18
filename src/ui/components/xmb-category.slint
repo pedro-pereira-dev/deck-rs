@@ -1,0 +1,28 @@
+import { Theme } from "../theme.slint";
+
+export component XmbCategory inherits Rectangle {
+    in property <string> glyph;
+    in property <bool> selected;
+    in property <length> viewport-height;
+    in property <length> viewport-width;
+    in property <float> icon-font-percent: 5.0;
+    in property <float> icon-height-percent: 14.0;
+    in property <float> icon-width-percent: 7.875;
+    in property <float> selected-icon-font-percent: 6.0;
+    in property <color> text-color: Theme.text;
+
+    height: root.viewport-height * root.icon-height-percent / 100;
+    width: root.viewport-width * root.icon-width-percent / 100;
+
+    Text {
+        color: root.selected ? root.text-color : root.text-color.with-alpha(0.15);
+        font-family: Theme.font-family;
+        font-size: root.viewport-height
+            * (root.selected ? root.selected-icon-font-percent : root.icon-font-percent) / 100;
+        horizontal-alignment: center;
+        text: root.glyph;
+        vertical-alignment: center;
+        height: parent.height;
+        width: parent.width;
+    }
+}

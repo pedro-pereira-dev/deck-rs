@@ -1,0 +1,70 @@
+import { Theme } from "../theme.slint";
+
+export component Clock inherits Rectangle {
+    in property <string> date;
+    in property <string> time;
+    in property <color> date-color: root.text-color.with-alpha(0.6);
+    in property <length> date-font-size: 1.8 * root.height / 100;
+    in property <length> box-height;
+    in property <float> box-width-percent: 100.0;
+    in property <string> font-family: "sans-serif";
+    in property <string> horizontal-alignment: "center";
+    in property <length> horizontal-padding: 3.375 * root.width / 100;
+    in property <length> line-spacing: 3 * root.height / 100;
+    in property <color> text-color: Theme.text;
+    in property <length> time-font-size: 11.25 * root.height / 100;
+    in property <length> top-offset: 3 * root.height / 100;
+    in property <string> vertical-alignment: "top";
+
+    property <length> content-height: root.time-font-size + root.line-spacing + root.date-font-size;
+    property <length> content-box-height: root.box-height > 0px ? root.box-height : root.content-height;
+    property <length> content-box-width: min(
+        root.width - 2 * root.horizontal-padding,
+        root.width * root.box-width-percent / 100
+    );
+    property <length> content-y: root.vertical-alignment == "bottom"
+        ? root.height - root.content-box-height - root.top-offset
+        : root.vertical-alignment == "center"
+        ? (root.height - root.content-box-height) / 2 + root.top-offset
+        : root.top-offset;
+
+    content-box := Rectangle {
+        background: transparent;
+        clip: true;
+        height: root.content-box-height;
+        width: root.content-box-width;
+        x: root.horizontal-alignment == "left"
+            ? root.horizontal-padding
+            : root.horizontal-alignment == "right"
+            ? root.width - root.horizontal-padding - self.width
+            : (root.width - self.width) / 2;
+        y: root.content-y;
+
+        Text {
+            color: root.text-color;
+            font-family: root.font-family;
+            font-size: root.time-font-size;
+            horizontal-alignment: root.horizontal-alignment == "left"
+                ? left
+                : root.horizontal-alignment == "right" ? right : center;
+            height: root.time-font-size;
+            text: root.time;
+            vertical-alignment: center;
+            width: parent.width;
+        }
+
+        Text {
+            color: root.date-color;
+            font-family: root.font-family;
+            font-size: root.date-font-size;
+            horizontal-alignment: root.horizontal-alignment == "left"
+                ? left
+                : root.horizontal-alignment == "right" ? right : center;
+            height: root.date-font-size;
+            text: root.date;
+            vertical-alignment: center;
+            width: parent.width;
+            y: root.time-font-size + root.line-spacing;
+        }
+    }
+}

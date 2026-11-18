@@ -1,15 +1,11 @@
 pub struct Position {
     pub category: usize,
-    pub rows: Vec<usize>,
+    pub item: usize,
 }
 
 impl Position {
     pub fn new(category: usize) -> Self {
-        Self { category, rows: vec![0] }
-    }
-
-    pub fn depth(&self) -> usize {
-        self.rows.len() - 1
+        Self { category, item: 0 }
     }
 
     pub fn go_to_category(&mut self, category: usize) {
@@ -24,25 +20,11 @@ impl Position {
     }
 
     pub fn move_row(&mut self, count: usize, direction: isize) {
-        let depth = self.depth();
-        self.rows[depth] = (self.rows[depth] as isize + direction).clamp(0, count.max(1) as isize - 1) as usize;
+        self.item = (self.item as isize + direction).rem_euclid(count.max(1) as isize) as usize;
     }
 
-    pub fn enter(&mut self) {
-        self.rows.push(0);
-    }
-
-    pub fn go_back(&mut self) -> bool {
-        let can_go_back = self.depth() > 0;
-        if can_go_back {
-            self.rows.pop();
-        }
-        can_go_back
-    }
-
-    pub fn pick(&mut self, column: usize, index: usize) {
-        self.rows.truncate(column + 1);
-        self.rows[column] = index;
+    pub fn pick(&mut self, index: usize) {
+        self.item = index;
     }
 }
 
@@ -51,28 +33,29 @@ mod tests {
     use super::Position;
 
     #[test]
-    fn rows_clamp_to_the_column() {
+    fn rows_wrap_within_the_column() {
         let mut position = Position::new(0);
         position.move_row(3, -1);
-        assert_eq!(position.rows, [0]);
+        assert_eq!(position.item, 2);
         position.move_row(3, 5);
-        assert_eq!(position.rows, [2]);
+        assert_eq!(position.item, 1);
     }
 
     #[test]
-    fn enter_and_back_change_depth() {
-        let mut position = Position::new(1);
-        position.enter();
-        assert_eq!(position.depth(), 1);
-        assert!(position.go_back());
-        assert!(!position.go_back());
-    }
-
-    #[test]
-    fn pick_drops_deeper_columns() {
+    fn categories_stop_at_the_ends() {
         let mut position = Position::new(0);
-        position.enter();
-        position.pick(0, 2);
-        assert_eq!(position.rows, [2]);
+        position.move_category(3, -1);
+        assert_eq!(position.category, 0);
+        position.move_category(3, 1);
+        assert_eq!(position.category, 1);
+        position.move_category(3, 20);
+        assert_eq!(position.category, 2);
+    }
+
+    #[test]
+    fn pick_changes_selected_item() {
+        let mut position = Position::new(0);
+        position.pick(2);
+        assert_eq!(position.item, 2);
     }
 }

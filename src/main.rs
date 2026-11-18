@@ -20,6 +20,7 @@ struct AppState {
     categories: Vec<String>,
     config: config::Config,
     error_message: Option<String>,
+    example_view: bool,
     position: navigation::Position,
     root: Vec<MenuItem>,
 }
@@ -35,20 +36,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         categories,
         config,
         error_message: config_error,
+        example_view: false,
         position: navigation::Position::new(category),
     }));
     let window = DeckWindow::new()?;
     let weak_window = window.as_weak();
-    window.set_clock_date(clock_text("+%d/%m").into());
-    window.set_clock_time(clock_text("+%H:%M").into());
+    let clock_config = state.borrow().config.ui.clock.clone();
+    window.set_clock_date(clock_text(&clock_config.date_format).into());
+    window.set_clock_time(clock_text(&clock_config.format).into());
 
     apply_config(&window, &state.borrow().config);
     apply_input_config(&window, &state.borrow().config.input.keyboard);
     {
         let state = state.borrow();
         let icons = menu::category_icons(&state.config, &state.categories);
-        window.set_categories(strings(&state.categories));
-        window.set_category_icons(strings(&icons));
+        let categories =
+            state.categories.iter().zip(icons).map(|(_, glyph)| Category { glyph: glyph.into() }).collect::<Vec<_>>();
+        window.set_categories(ModelRc::new(VecModel::from(categories)));
         window.set_cells(ModelRc::from(state.cells.clone()));
     }
     update_window(&window, &state.borrow());
@@ -68,11 +72,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if let Some(window) = gamepad_timer_window.upgrade()
                 && window.window().is_visible()
             {
-                if command == "select" {
-                    activate_selected(&window, &gamepad_state, &gamepad_action_sender);
-                } else {
-                    navigate(&window, &gamepad_state, &command);
-                }
+                process_command(&window, &gamepad_state, &gamepad_action_sender, &command);
             }
         }
         while let Ok(result) = action_receiver.try_recv() {
@@ -88,11 +88,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     let clock_window = weak_window;
+    let clock_date_format = state.borrow().config.ui.clock.date_format.clone();
+    let clock_format = state.borrow().config.ui.clock.format.clone();
     let clock_timer = Timer::default();
     clock_timer.start(TimerMode::Repeated, Duration::from_secs(30), move || {
         if let Some(window) = clock_window.upgrade() {
-            window.set_clock_date(clock_text("+%d/%m").into());
-            window.set_clock_time(clock_text("+%H:%M").into());
+            window.set_clock_date(clock_text(&clock_date_format).into());
+            window.set_clock_time(clock_text(&clock_format).into());
         }
     });
 
@@ -104,9 +106,37 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 fn wire_callbacks(window: &DeckWindow, state: Rc<RefCell<AppState>>, action_sender: mpsc::Sender<Result<(), String>>) {
     let weak_window = window.as_weak();
     let navigation_state = state.clone();
+    let navigation_sender = action_sender.clone();
     window.on_navigate(move |command| {
         if let Some(window) = weak_window.upgrade() {
-            navigate(&window, &navigation_state, command.as_str());
+            process_command(&window, &navigation_state, &navigation_sender, command.as_str());
+        }
+    });
+
+    let weak_window = window.as_weak();
+    let view_navigation_state = state.clone();
+    let view_navigation_sender = action_sender.clone();
+    window.on_view_navigate(move |command| {
+        if let Some(window) = weak_window.upgrade() {
+            process_command(&window, &view_navigation_state, &view_navigation_sender, command.as_str());
+        }
+    });
+
+    let weak_window = window.as_weak();
+    let category_state = state.clone();
+    window.on_focus_category(move |index| {
+        if let Some(window) = weak_window.upgrade() {
+            go_to_category(&window, &category_state, index as usize);
+        }
+    });
+
+    let weak_window = window.as_weak();
+    let pick_state = state.clone();
+    let pick_sender = action_sender.clone();
+    window.on_pick_item(move |index| {
+        if let Some(window) = weak_window.upgrade() {
+            pick_state.borrow_mut().position.pick(index as usize);
+            activate_selected(&window, &pick_state, &pick_sender);
         }
     });
 
@@ -120,15 +150,6 @@ fn wire_callbacks(window: &DeckWindow, state: Rc<RefCell<AppState>>, action_send
     });
 
     let weak_window = window.as_weak();
-    let pick_state = state.clone();
-    window.on_pick_cell(move |column, index| {
-        if let Some(window) = weak_window.upgrade() {
-            pick_state.borrow_mut().position.pick(column as usize, index as usize);
-            activate_selected(&window, &pick_state, &action_sender);
-        }
-    });
-
-    let weak_window = window.as_weak();
     let scroll_state = state.clone();
     window.on_scroll_items(move |delta| {
         if let Some(window) = weak_window.upgrade() {
@@ -137,15 +158,19 @@ fn wire_callbacks(window: &DeckWindow, state: Rc<RefCell<AppState>>, action_send
     });
 
     let weak_window = window.as_weak();
-    window.on_focus_category(move |index| {
-        if let Some(window) = weak_window.upgrade() {
-            go_to_category(&window, &state, index as usize);
-        }
+    window.on_back(move || {
+        leave_example_view(weak_window.clone(), state.clone());
     });
 }
 
-fn strings(values: &[String]) -> ModelRc<SharedString> {
-    ModelRc::new(VecModel::from(values.iter().map(|value| value.as_str().into()).collect::<Vec<SharedString>>()))
+fn leave_example_view(window: slint::Weak<DeckWindow>, state: Rc<RefCell<AppState>>) {
+    Timer::single_shot(Duration::ZERO, move || {
+        if let Some(window) = window.upgrade() {
+            let mut state = state.borrow_mut();
+            state.example_view = false;
+            update_window(&window, &state);
+        }
+    });
 }
 
 fn apply_config(window: &DeckWindow, config: &config::Config) {
@@ -154,6 +179,63 @@ fn apply_config(window: &DeckWindow, config: &config::Config) {
     theme.set_background(color(&config.ui.background, "#000000"));
     theme.set_font_family(config.ui.font_family.clone().into());
     theme.set_text(color(&config.ui.text, "#ffffff"));
+    window.set_font_family(config.ui.font_family.clone().into());
+    window.set_text_color(color(&config.ui.text, "#ffffff"));
+    window.set_clock_date_color(color(&config.ui.clock.date_color, "#999999"));
+    window.set_clock_date_font_percent(config.ui.clock.date_font_percent);
+    window.set_clock_box_height_percent(config.ui.clock.box_height_percent);
+    window.set_clock_box_width_percent(config.ui.clock.box_width_percent);
+    window.set_clock_font_family(config.ui.clock.font_family.clone().into());
+    window.set_clock_horizontal_alignment(config.ui.clock.horizontal_alignment.clone().into());
+    window.set_clock_horizontal_padding_percent(config.ui.clock.horizontal_padding_percent);
+    window.set_clock_line_spacing_percent(config.ui.clock.line_spacing_percent);
+    window.set_clock_text_color(color(&config.ui.clock.text_color, "#ffffff"));
+    window.set_clock_time_font_percent(config.ui.clock.time_font_percent);
+    window.set_clock_top_offset_percent(config.ui.clock.top_offset_percent);
+    window.set_clock_vertical_alignment(config.ui.clock.vertical_alignment.clone().into());
+    window.set_header_category_font_percent(config.ui.header.category_font_percent);
+    window.set_header_date_font_percent(config.ui.header.date_font_percent);
+    window.set_header_date_top_percent(config.ui.header.date_top_percent);
+    window.set_header_left_padding_percent(config.ui.header.left_padding_percent);
+    window.set_header_time_font_percent(config.ui.header.time_font_percent);
+    window.set_header_top_percent(config.ui.header.top_percent);
+    window.set_example_back_button_font_percent(config.ui.example.back_button_font_percent);
+    window.set_example_back_button_height_percent(config.ui.example.back_button_height_percent);
+    window.set_example_back_button_left_percent(config.ui.example.back_button_left_percent);
+    window.set_example_back_button_top_percent(config.ui.example.back_button_top_percent);
+    window.set_example_back_button_width_percent(config.ui.example.back_button_width_percent);
+    window.set_xmb_category_center_percent(config.ui.xmb.category_center_percent);
+    window.set_xmb_category_center_y_percent(config.ui.xmb.category_center_y_percent);
+    window.set_xmb_category_gap_percent(config.ui.xmb.category_gap_percent);
+    window.set_xmb_category_icon_height_percent(config.ui.xmb.category_icon_height_percent);
+    window.set_xmb_category_icon_percent(config.ui.xmb.category_icon_percent);
+    window.set_xmb_category_icon_width_percent(config.ui.xmb.category_icon_width_percent);
+    window.set_xmb_category_selected_icon_percent(config.ui.xmb.category_selected_icon_percent);
+    window.set_xmb_error_bottom_percent(config.ui.xmb.error_bottom_percent);
+    window.set_xmb_error_font_percent(config.ui.xmb.error_font_percent);
+    window.set_xmb_error_horizontal_padding_percent(config.ui.xmb.error_horizontal_padding_percent);
+    window.set_xmb_item_column_offset_percent(config.ui.xmb.item_column_offset_percent);
+    window.set_xmb_item_column_width_percent(config.ui.xmb.item_column_width_percent);
+    window.set_xmb_item_font_percent(config.ui.xmb.item_font_percent);
+    window.set_xmb_item_glyph_offset_percent(config.ui.xmb.item_glyph_offset_percent);
+    window.set_xmb_item_glyph_percent(config.ui.xmb.item_glyph_percent);
+    window.set_xmb_item_glyph_width_percent(config.ui.xmb.item_glyph_width_percent);
+    window.set_xmb_item_height_percent(config.ui.xmb.item_height_percent);
+    window.set_xmb_item_label_offset_percent(config.ui.xmb.item_label_offset_percent);
+    window.set_xmb_item_selected_font_percent(config.ui.xmb.item_selected_font_percent);
+    window.set_xmb_item_selected_glyph_percent(config.ui.xmb.item_selected_glyph_percent);
+    window.set_xmb_item_selected_height_percent(config.ui.xmb.item_selected_height_percent);
+    window.set_xmb_item_selected_y_percent(config.ui.xmb.item_selected_y_percent);
+    window.set_xmb_item_positive_near_step_percent(config.ui.xmb.item_positive_near_step_percent);
+    window.set_xmb_item_positive_far_gap_percent(config.ui.xmb.item_positive_far_gap_percent);
+    window.set_xmb_item_positive_far_step_percent(config.ui.xmb.item_positive_far_step_percent);
+    window.set_xmb_item_negative_near_step_percent(config.ui.xmb.item_negative_near_step_percent);
+    window.set_xmb_item_negative_far_top_percent(config.ui.xmb.item_negative_far_top_percent);
+    window.set_xmb_item_negative_far_step_percent(config.ui.xmb.item_negative_far_step_percent);
+    window.set_xmb_selection_line_percent(config.ui.xmb.selection_line_percent);
+    window.set_xmb_selection_line_offset_percent(config.ui.xmb.selection_line_offset_percent);
+    window.set_xmb_vertical_offset_percent(config.ui.xmb.vertical_offset_percent);
+    window.set_xmb_viewport_top_percent(config.ui.xmb.viewport_top_percent);
     if let Ok(image) = slint::Image::load_from_path(std::path::Path::new(&config.ui.background_image)) {
         theme.set_background_image(image);
         theme.set_has_background_image(true);
@@ -162,7 +244,7 @@ fn apply_config(window: &DeckWindow, config: &config::Config) {
 
 fn clock_text(format: &str) -> String {
     std::process::Command::new("date")
-        .arg(format)
+        .arg(format!("+{format}"))
         .output()
         .ok()
         .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_owned())
@@ -239,22 +321,16 @@ fn parse_color(value: &str) -> Option<u32> {
 }
 
 fn update_window(window: &DeckWindow, state: &AppState) {
-    let columns = menu::columns(&state.root, &state.position.rows);
-    let depth = columns.len() - 1;
-    let mut cells = Vec::new();
-    for (column, items) in columns.iter().enumerate().skip(depth.saturating_sub(1)) {
-        for (index, item) in items.iter().enumerate() {
-            cells.push(Cell {
-                active: column == depth,
-                column: column as i32,
-                focus: state.position.rows[column] as i32,
-                glyph: item.glyph.as_str().into(),
-                index: index as i32,
-                label: item.label.as_str().into(),
-                subtitle: item.subtitle.as_str().into(),
-            });
-        }
-    }
+    let cells = state
+        .root
+        .iter()
+        .enumerate()
+        .map(|(index, item)| Cell {
+            glyph: item.glyph.as_str().into(),
+            index: index as i32,
+            label: item.label.as_str().into(),
+        })
+        .collect::<Vec<_>>();
     if state.cells.row_count() == cells.len() {
         for (row, cell) in cells.into_iter().enumerate() {
             state.cells.set_row_data(row, cell);
@@ -263,10 +339,11 @@ fn update_window(window: &DeckWindow, state: &AppState) {
         state.cells.set_vec(cells);
     }
     window.set_busy(state.busy);
-    window.set_category_title(state.categories[state.position.category].as_str().into());
-    window.set_depth(depth as i32);
+    window.set_example_view(state.example_view);
     window.set_error_message(state.error_message.clone().unwrap_or_default().into());
+    window.set_category_title(state.categories[state.position.category].clone().into());
     window.set_selected_category(state.position.category as i32);
+    window.set_selected_item(state.position.item as i32);
 }
 
 fn go_to_category(window: &DeckWindow, state: &Rc<RefCell<AppState>>, category: usize) {
@@ -278,21 +355,25 @@ fn go_to_category(window: &DeckWindow, state: &Rc<RefCell<AppState>>, category: 
 }
 
 fn navigate(window: &DeckWindow, state: &Rc<RefCell<AppState>>, command: &str) {
-    let (depth, category_count, row_count, home, current) = {
+    let (category_count, row_count, home, current) = {
         let state = state.borrow();
-        let columns = menu::columns(&state.root, &state.position.rows);
-        let home = state.categories.iter().position(|name| name == "Favorites").unwrap_or(0);
-        (columns.len() - 1, state.categories.len(), columns[columns.len() - 1].len(), home, state.position.category)
+        let home = state.categories.iter().position(|name| name == "Home").unwrap_or(0);
+        (state.categories.len(), state.root.len(), home, state.position.category)
     };
     match command {
-        "left" | "right" if depth == 0 => {
+        "left" => {
             let mut target = navigation::Position::new(current);
-            target.move_category(category_count, if command == "left" { -1 } else { 1 });
-            go_to_category(window, state, target.category);
+            target.move_category(category_count, -1);
+            if target.category != current {
+                go_to_category(window, state, target.category);
+            }
         }
-        "left" | "back" if depth > 0 => {
-            state.borrow_mut().position.go_back();
-            update_window(window, &state.borrow());
+        "right" => {
+            if current + 1 < category_count {
+                let mut target = navigation::Position::new(current);
+                target.move_category(category_count, 1);
+                go_to_category(window, state, target.category);
+            }
         }
         "back" | "menu" => go_to_category(window, state, home),
         "up" | "down" => {
@@ -308,18 +389,16 @@ fn activate_selected(
     state: &Rc<RefCell<AppState>>,
     action_sender: &mpsc::Sender<Result<(), String>>,
 ) {
-    let (action, has_children) = {
+    let action = {
         let state = state.borrow();
-        let columns = menu::columns(&state.root, &state.position.rows);
-        let selected = columns.last().and_then(|items| items.get(state.position.rows[columns.len() - 1]));
-        (selected.map(|item| item.action.clone()), selected.is_some_and(|item| !item.children.is_empty()))
+        state.root.get(state.position.item).map(|item| item.action.clone())
     };
-    if has_children {
-        state.borrow_mut().position.enter();
-        update_window(window, &state.borrow());
-        return;
-    }
     match action {
+        Some(MenuAction::ExampleView) => {
+            let mut state = state.borrow_mut();
+            state.example_view = true;
+            update_window(window, &state);
+        }
         Some(MenuAction::Launch(app)) => match actions::launch(app) {
             Ok(mut child) => {
                 if let Err(error) = window.window().hide() {
@@ -348,6 +427,25 @@ fn activate_selected(
             });
         }
         Some(MenuAction::None) | None => {}
+    }
+}
+
+fn process_command(
+    window: &DeckWindow,
+    state: &Rc<RefCell<AppState>>,
+    action_sender: &mpsc::Sender<Result<(), String>>,
+    command: &str,
+) {
+    if state.borrow().example_view {
+        if matches!(command, "back" | "left" | "menu" | "select") {
+            leave_example_view(window.as_weak(), state.clone());
+        }
+        return;
+    }
+    if command == "select" {
+        activate_selected(window, state, action_sender);
+    } else {
+        navigate(window, state, command);
     }
 }
 

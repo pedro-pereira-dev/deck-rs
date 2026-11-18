@@ -1,0 +1,49 @@
+import { BackButton } from "../components/back-button.slint";
+import { Theme } from "../theme.slint";
+
+export component ExampleView inherits Rectangle {
+    in property <string> key_back: "Escape";
+    in property <string> key_down: "DownArrow";
+    in property <string> key_left: "LeftArrow";
+    in property <string> key_menu: "Home";
+    in property <string> key_right: "RightArrow";
+    in property <string> key_select: "Return";
+    in property <string> key_up: "UpArrow";
+    callback back();
+    callback navigate(string);
+
+    background: Theme.background;
+    forward-focus: input-focus;
+
+    in property <float> back-button-font-percent: 3.5;
+    in property <float> back-button-height-percent: 8.0;
+    in property <float> back-button-left-percent: 40.0;
+    in property <float> back-button-top-percent: 46.0;
+    in property <float> back-button-width-percent: 20.0;
+
+    BackButton {
+        font-size: root.height * root.back-button-font-percent / 100;
+        label: "Back";
+        text-color: Theme.text;
+        width: root.width * root.back-button-width-percent / 100;
+        height: root.height * root.back-button-height-percent / 100;
+        x: root.width * root.back-button-left-percent / 100;
+        y: root.height * root.back-button-top-percent / 100;
+        clicked => { root.back(); }
+    }
+
+    input-focus := FocusScope {
+        key-pressed(event) => {
+            if event.text == root.key_back { root.back(); }
+            else if event.text == root.key_left { root.navigate("left"); }
+            else if event.text == root.key_right { root.navigate("right"); }
+            else if event.text == root.key_up { root.navigate("up"); }
+            else if event.text == root.key_down { root.navigate("down"); }
+            else if event.text == root.key_select || event.text == " " { root.back(); }
+            else if event.text == root.key_menu { root.back(); }
+            accept
+        }
+    }
+
+    init => { input-focus.focus(); }
+}

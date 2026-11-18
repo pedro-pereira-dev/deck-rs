@@ -1,0 +1,22 @@
+import { Theme } from "../theme.slint";
+
+export component BackButton inherits Rectangle {
+    in property <string> label: "Back";
+    in property <length> font-size;
+    in property <color> text-color: Theme.text;
+    callback clicked();
+
+    Text {
+        color: root.text-color;
+        font-size: root.font-size;
+        horizontal-alignment: center;
+        text: root.label;
+        vertical-alignment: center;
+        width: root.width;
+        height: root.height;
+    }
+
+    TouchArea {
+        clicked => { root.clicked(); }
+    }
+}

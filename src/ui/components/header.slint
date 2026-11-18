@@ -1,0 +1,40 @@
+import { Theme } from "../theme.slint";
+
+export component Header inherits Rectangle {
+    in property <string> category;
+    in property <string> date;
+    in property <string> time;
+    in property <float> category-font-percent: 6.5;
+    in property <float> date-font-percent: 1.8;
+    in property <float> date-top-percent: 17.25;
+    in property <float> left-padding-percent: 3.375;
+    in property <float> time-font-percent: 11.25;
+    in property <float> top-percent: 3.0;
+    in property <color> text-color: Theme.text;
+
+    Text {
+        color: root.text-color;
+        font-size: root.height * root.category-font-percent / 100;
+        text: root.category;
+        x: root.width * root.left-padding-percent / 100;
+        y: root.height * root.top-percent / 100;
+    }
+
+    Text {
+        color: root.text-color;
+        font-size: root.height * root.time-font-percent / 100;
+        horizontal-alignment: right;
+        text: root.time;
+        width: root.width - root.width * root.left-padding-percent / 100;
+        y: root.height * root.top-percent / 100;
+    }
+
+    Text {
+        color: root.text-color.with-alpha(0.6);
+        font-size: root.height * root.date-font-percent / 100;
+        horizontal-alignment: right;
+        text: root.date;
+        width: root.width - root.width * root.left-padding-percent / 100;
+        y: root.height * root.date-top-percent / 100;
+    }
+}

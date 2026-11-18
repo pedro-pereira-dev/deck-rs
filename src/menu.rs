@@ -4,14 +4,13 @@ use crate::config::{AppConfig, Config};
 pub struct MenuItem {
     pub label: String,
     pub glyph: String,
-    pub subtitle: String,
     pub action: MenuAction,
-    pub children: Vec<MenuItem>,
 }
 
 #[derive(Clone)]
 pub enum MenuAction {
     None,
+    ExampleView,
     Launch(AppConfig),
     Command(Vec<String>),
 }
@@ -37,7 +36,10 @@ pub fn categories(config: &Config) -> Vec<String> {
 
 pub fn build(config: &Config, category: &str) -> Vec<MenuItem> {
     match category {
-        "Home" => vec![item("deck-rs", "\u{f02dc}", "app launcher", MenuAction::None)],
+        "Home" => vec![
+            item("deck-rs", "\u{f02dc}", MenuAction::None),
+            item("Example view", "\u{f06a9}", MenuAction::ExampleView),
+        ],
         "Favorites" => {
             let mut favorites = config
                 .ui
@@ -47,76 +49,33 @@ pub fn build(config: &Config, category: &str) -> Vec<MenuItem> {
                 .map(app_item)
                 .collect::<Vec<_>>();
             if favorites.is_empty() {
-                favorites.push(item("no favorites configured", "\u{f04ce}", "", MenuAction::None));
+                favorites.push(item("no favorites configured", "\u{f04ce}", MenuAction::None));
             }
             favorites
         }
-        "Settings" => settings(config),
+        "Settings" => vec![
+            item("Bluetooth", "\u{f00af}", MenuAction::ExampleView),
+            item("Network", "\u{f05a9}", MenuAction::ExampleView),
+            item("Audio", "\u{f057e}", MenuAction::ExampleView),
+        ],
         "Power" => power(config),
         name => config.app.iter().filter(|app| app.category.eq_ignore_ascii_case(name)).map(app_item).collect(),
     }
 }
 
-pub fn columns<'a>(root: &'a [MenuItem], rows: &[usize]) -> Vec<&'a [MenuItem]> {
-    let mut columns = vec![root];
-    for row in &rows[..rows.len() - 1] {
-        match columns.last().and_then(|items| items.get(*row)) {
-            Some(parent) if !parent.children.is_empty() => columns.push(&parent.children),
-            _ => break,
-        }
-    }
-    columns
-}
-
 fn app_item(app: &AppConfig) -> MenuItem {
-    item(&app.name, &app.icon, "", MenuAction::Launch(app.clone()))
-}
-
-fn settings(config: &Config) -> Vec<MenuItem> {
-    let group = |label: &str, glyph: &str, entries: &[(&str, &str, &str)]| MenuItem {
-        children: entries.iter().map(|(label, glyph, key)| item(label, glyph, "", command(config, key))).collect(),
-        ..item(label, glyph, "", MenuAction::None)
-    };
-    vec![
-        group(
-            "bluetooth",
-            "\u{f00af}",
-            &[
-                ("on", "\u{f00af}", "bluetooth_on"),
-                ("off", "\u{f00b2}", "bluetooth_off"),
-                ("scan", "\u{f0349}", "bluetooth_scan"),
-            ],
-        ),
-        group(
-            "network",
-            "\u{f05a9}",
-            &[
-                ("wi-fi on", "\u{f05a9}", "wifi_on"),
-                ("wi-fi off", "\u{f05aa}", "wifi_off"),
-                ("scan", "\u{f0349}", "wifi_scan"),
-            ],
-        ),
-        group(
-            "audio",
-            "\u{f057e}",
-            &[
-                ("mute", "\u{f0581}", "audio_mute"),
-                ("volume up", "\u{f057e}", "audio_volume_up"),
-                ("volume down", "\u{f057e}", "audio_volume_down"),
-            ],
-        ),
-    ]
+    item(&app.name, &app.icon, MenuAction::Launch(app.clone()))
 }
 
 fn power(config: &Config) -> Vec<MenuItem> {
     [
-        ("suspend", "\u{f04b2}", "suspend"),
         ("power off", "\u{f0425}", "power_off"),
         ("reboot", "\u{f0709}", "reboot"),
         ("exit session", "\u{f0343}", "exit_session"),
+        ("suspend", "\u{f04b2}", "suspend"),
     ]
     .into_iter()
-    .map(|(label, glyph, key)| item(label, glyph, "", command(config, key)))
+    .map(|(label, glyph, key)| item(label, glyph, command(config, key)))
     .collect()
 }
 
@@ -124,8 +83,8 @@ fn command(config: &Config, key: &str) -> MenuAction {
     config.commands.get(key).cloned().map_or(MenuAction::None, MenuAction::Command)
 }
 
-fn item(label: &str, glyph: &str, subtitle: &str, action: MenuAction) -> MenuItem {
-    MenuItem { action, children: Vec::new(), glyph: glyph.into(), label: label.into(), subtitle: subtitle.into() }
+fn item(label: &str, glyph: &str, action: MenuAction) -> MenuItem {
+    MenuItem { action, glyph: glyph.into(), label: label.into() }
 }
 
 pub fn category_icons(config: &Config, categories: &[String]) -> Vec<String> {

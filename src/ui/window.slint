@@ -1,24 +1,27 @@
 import "../../assets/SymbolsNerdFontMono-Regular.ttf";
-import { Cell } from "components/xmb.slint";
-import { ProgressIndicator } from "std-widgets.slint";
+import { Category, Cell } from "components/xmb.slint";
+import { Header } from "components/header.slint";
 import { Theme } from "theme.slint";
+import { Xmb } from "components/xmb.slint";
+import { ExampleView } from "views/example.slint";
 import { MainView } from "views/main.slint";
 
-export { Cell } from "components/xmb.slint";
+export { Category, Cell } from "components/xmb.slint";
 export { Theme } from "theme.slint";
 
 export component DeckWindow inherits Window {
-
+    in property <[Category]> categories;
     in property <[Cell]> cells;
-    in property <[string]> categories;
-    in property <[string]> category-icons;
     in property <bool> busy;
-    in property <int> depth;
     in property <int> selected-category;
+    in property <int> selected-item;
     in property <string> category-title;
     in property <string> clock-date;
     in property <string> clock-time;
     in property <string> error-message;
+    in property <bool> example-view;
+    in property <color> text-color: #ffffff;
+    in property <string> font-family: "Symbols Nerd Font Mono";
     in property <string> key_back;
     in property <string> key_down;
     in property <string> key_left;
@@ -26,28 +29,161 @@ export component DeckWindow inherits Window {
     in property <string> key_right;
     in property <string> key_select;
     in property <string> key_up;
+    in property <float> progress;
+
+    in property <color> clock-date-color: #999999;
+    in property <float> clock-date-font-percent: 1.8;
+    in property <float> clock-box-height-percent: 0.0;
+    in property <float> clock-box-width-percent: 100.0;
+    in property <string> clock-font-family: "sans-serif";
+    in property <string> clock-horizontal-alignment: "center";
+    in property <float> clock-horizontal-padding-percent: 3.375;
+    in property <float> clock-line-spacing-percent: 3.0;
+    in property <color> clock-text-color: #ffffff;
+    in property <float> clock-time-font-percent: 11.25;
+    in property <float> clock-top-offset-percent: 3.0;
+    in property <string> clock-vertical-alignment: "top";
+
+    in property <float> example-back-button-font-percent: 3.5;
+    in property <float> example-back-button-height-percent: 8.0;
+    in property <float> example-back-button-left-percent: 40.0;
+    in property <float> example-back-button-top-percent: 46.0;
+    in property <float> example-back-button-width-percent: 20.0;
+
+    in property <float> header-category-font-percent: 6.5;
+    in property <float> header-date-font-percent: 1.8;
+    in property <float> header-date-top-percent: 17.25;
+    in property <float> header-left-padding-percent: 3.375;
+    in property <float> header-time-font-percent: 11.25;
+    in property <float> header-top-percent: 3.0;
+
+    in property <float> xmb-category-center-percent: 50.0;
+    in property <float> xmb-category-center-y-percent: 33.0;
+    in property <float> xmb-category-gap-percent: 7.875;
+    in property <float> xmb-category-icon-height-percent: 14.0;
+    in property <float> xmb-category-icon-percent: 5.0;
+    in property <float> xmb-category-icon-width-percent: 7.875;
+    in property <float> xmb-category-selected-icon-percent: 6.0;
+    in property <float> xmb-error-bottom-percent: 5.0;
+    in property <float> xmb-error-font-percent: 1.5;
+    in property <float> xmb-error-horizontal-padding-percent: 3.375;
+    in property <float> xmb-item-column-offset-percent: 5.625;
+    in property <float> xmb-item-column-width-percent: 25.3125;
+    in property <float> xmb-item-font-percent: 1.5;
+    in property <float> xmb-item-glyph-offset-percent: -2.8125;
+    in property <float> xmb-item-glyph-percent: 2.1;
+    in property <float> xmb-item-glyph-width-percent: 5.625;
+    in property <float> xmb-item-height-percent: 3.0;
+    in property <float> xmb-item-label-offset-percent: 2.8125;
+    in property <float> xmb-item-negative-far-step-percent: 5.0;
+    in property <float> xmb-item-negative-far-top-percent: 23.0;
+    in property <float> xmb-item-negative-near-step-percent: 20.0;
+    in property <float> xmb-item-positive-far-gap-percent: 2.5;
+    in property <float> xmb-item-positive-far-step-percent: 5.0;
+    in property <float> xmb-item-positive-near-step-percent: 7.5;
+    in property <float> xmb-item-selected-font-percent: 2.25;
+    in property <float> xmb-item-selected-glyph-percent: 3.15;
+    in property <float> xmb-item-selected-height-percent: 4.5;
+    in property <float> xmb-item-selected-y-percent: 43.0;
+    in property <float> xmb-selection-line-percent: 0.15;
+    in property <float> xmb-selection-line-offset-percent: 2.61;
+    in property <float> xmb-vertical-offset-percent: 0.0;
+    in property <float> xmb-viewport-top-percent: 33.0;
 
     callback focus-category(int);
     callback navigate(string);
-    callback pick-cell(int, int);
+    callback pick-item(int);
     callback scroll-items(float);
     callback select();
+    callback back();
+    callback view-navigate(string);
 
     background: Theme.background;
-    forward-focus: menu-focus;
-    preferred-height: 1080px;
-    preferred-width: 1920px;
     title: "deck-rs";
 
-    menu-focus := MainView {
-        categories: root.categories;
-        category-icons: root.category-icons;
-        category-title: root.category-title;
-        cells: root.cells;
+    MainView {
         clock-date: root.clock-date;
+        clock-date-color: root.clock-date-color;
+        clock-date-font-percent: root.clock-date-font-percent;
+        clock-box-height-percent: root.clock-box-height-percent;
+        clock-box-width-percent: root.clock-box-width-percent;
+        clock-font-family: root.clock-font-family;
+        clock-horizontal-alignment: root.clock-horizontal-alignment;
+        clock-horizontal-padding-percent: root.clock-horizontal-padding-percent;
+        clock-line-spacing-percent: root.clock-line-spacing-percent;
+        clock-text-color: root.clock-text-color;
         clock-time: root.clock-time;
-        depth: root.depth;
+        clock-time-font-percent: root.clock-time-font-percent;
+        clock-top-offset-percent: root.clock-top-offset-percent;
+        clock-vertical-alignment: root.clock-vertical-alignment;
+    }
+
+    if false: Header {
+        category: root.category-title;
+        category-font-percent: root.header-category-font-percent;
+        date: root.clock-date;
+        date-font-percent: root.header-date-font-percent;
+        date-top-percent: root.header-date-top-percent;
+        height: root.height;
+        left-padding-percent: root.header-left-padding-percent;
+        time: root.clock-time;
+        time-font-percent: root.header-time-font-percent;
+        top-percent: root.header-top-percent;
+        width: root.width;
+    }
+
+    if false: ExampleView {
+        back-button-font-percent: root.example-back-button-font-percent;
+        back-button-height-percent: root.example-back-button-height-percent;
+        back-button-left-percent: root.example-back-button-left-percent;
+        back-button-top-percent: root.example-back-button-top-percent;
+        back-button-width-percent: root.example-back-button-width-percent;
+        height: root.height;
+        key_back: root.key_back;
+        key_down: root.key_down;
+        key_left: root.key_left;
+        key_menu: root.key_menu;
+        key_right: root.key_right;
+        key_select: root.key_select;
+        key_up: root.key_up;
+        width: root.width;
+        back => { root.back(); }
+        navigate(command) => { root.view-navigate(command); }
+    }
+
+    if false: Xmb {
+        categories: root.categories;
+        category-center-percent: root.xmb-category-center-percent;
+        category-center-y-percent: root.xmb-category-center-y-percent;
+        category-gap-percent: root.xmb-category-gap-percent;
+        category-icon-height-percent: root.xmb-category-icon-height-percent;
+        category-icon-percent: root.xmb-category-icon-percent;
+        category-icon-width-percent: root.xmb-category-icon-width-percent;
+        category-selected-icon-percent: root.xmb-category-selected-icon-percent;
+        cells: root.cells;
+        error-bottom-percent: root.xmb-error-bottom-percent;
+        error-font-percent: root.xmb-error-font-percent;
+        error-horizontal-padding-percent: root.xmb-error-horizontal-padding-percent;
         error-message: root.error-message;
+        height: root.height;
+        item-column-offset-percent: root.xmb-item-column-offset-percent;
+        item-column-width-percent: root.xmb-item-column-width-percent;
+        item-font-percent: root.xmb-item-font-percent;
+        item-glyph-offset-percent: root.xmb-item-glyph-offset-percent;
+        item-glyph-percent: root.xmb-item-glyph-percent;
+        item-glyph-width-percent: root.xmb-item-glyph-width-percent;
+        item-height-percent: root.xmb-item-height-percent;
+        item-label-offset-percent: root.xmb-item-label-offset-percent;
+        item-negative-far-step-percent: root.xmb-item-negative-far-step-percent;
+        item-negative-far-top-percent: root.xmb-item-negative-far-top-percent;
+        item-negative-near-step-percent: root.xmb-item-negative-near-step-percent;
+        item-positive-far-gap-percent: root.xmb-item-positive-far-gap-percent;
+        item-positive-far-step-percent: root.xmb-item-positive-far-step-percent;
+        item-positive-near-step-percent: root.xmb-item-positive-near-step-percent;
+        item-selected-font-percent: root.xmb-item-selected-font-percent;
+        item-selected-glyph-percent: root.xmb-item-selected-glyph-percent;
+        item-selected-height-percent: root.xmb-item-selected-height-percent;
+        item-selected-y-percent: root.xmb-item-selected-y-percent;
         key_back: root.key_back;
         key_down: root.key_down;
         key_left: root.key_left;
@@ -56,18 +192,16 @@ export component DeckWindow inherits Window {
         key_select: root.key_select;
         key_up: root.key_up;
         selected-category: root.selected-category;
+        selected-item: root.selected-item;
+        selection-line-percent: root.xmb-selection-line-percent;
+        selection-line-offset-percent: root.xmb-selection-line-offset-percent;
+        vertical-offset-percent: root.xmb-vertical-offset-percent;
+        viewport-top-percent: root.xmb-viewport-top-percent;
+        width: root.width;
         focus-category(index) => { root.focus-category(index); }
         navigate(command) => { root.navigate(command); }
-        pick-cell(column, index) => { root.pick-cell(column, index); }
+        pick-item(index) => { root.pick-item(index); }
         scroll-items(delta) => { root.scroll-items(delta); }
         select => { root.select(); }
-    }
-
-    if root.busy: ProgressIndicator {
-        indeterminate: true;
-        progress: 0;
-        width: parent.width - 128px;
-        x: 64px;
-        y: 12px;
     }
 }
