@@ -1,4 +1,4 @@
-import { Theme } from "theme.slint";
+import { Theme } from "../theme.slint";
 
 export struct Cell {
     active: bool,
@@ -13,10 +13,7 @@ export struct Cell {
 export component Xmb inherits Rectangle {
     in property <[string]> categories;
     in property <[string]> category-icons;
-    in property <string> category-title;
     in property <[Cell]> cells;
-    in property <string> clock-date;
-    in property <string> clock-time;
     in property <string> error-message;
     in property <int> depth;
     in property <string> key_back: "Escape";
@@ -82,34 +79,6 @@ export component Xmb inherits Rectangle {
             }
             reject
         }
-    }
-
-    Text {
-        color: Theme.text;
-        font-size: root.unit * 0.65;
-        text: root.category-title;
-        x: root.unit * 0.6;
-        y: root.unit * 0.3;
-    }
-
-    Text {
-        color: Theme.text;
-        font-size: root.unit * 1.125;
-        horizontal-alignment: right;
-        text: root.clock-time;
-        width: 6 * root.unit;
-        x: root.width - 0.6 * root.unit - self.width;
-        y: root.unit * 0.3;
-    }
-
-    Text {
-        color: root.subdued;
-        font-size: root.unit * 0.18;
-        horizontal-alignment: right;
-        text: root.clock-date;
-        width: 6 * root.unit;
-        x: root.width - 0.6 * root.unit - self.width;
-        y: root.unit * 1.6;
     }
 
     for glyph[index] in root.category-icons: Rectangle {

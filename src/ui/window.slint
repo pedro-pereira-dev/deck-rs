@@ -1,9 +1,10 @@
 import "../../assets/SymbolsNerdFontMono-Regular.ttf";
-import { Cell, Xmb } from "xmb.slint";
+import { Cell } from "components/xmb.slint";
 import { ProgressIndicator } from "std-widgets.slint";
 import { Theme } from "theme.slint";
+import { MainView } from "views/main.slint";
 
-export { Cell } from "xmb.slint";
+export { Cell } from "components/xmb.slint";
 export { Theme } from "theme.slint";
 
 export component DeckWindow inherits Window {
@@ -38,7 +39,7 @@ export component DeckWindow inherits Window {
     preferred-width: 1920px;
     title: "deck-rs";
 
-    menu-focus := Xmb {
+    menu-focus := MainView {
         categories: root.categories;
         category-icons: root.category-icons;
         category-title: root.category-title;

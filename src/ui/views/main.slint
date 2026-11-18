@@ -1,0 +1,69 @@
+import { HeaderDetails } from "../components/header-details.slint";
+import { HeaderTitle } from "../components/header-title.slint";
+import { Cell, Xmb } from "../components/xmb.slint";
+
+export component MainView inherits Rectangle {
+    in property <[string]> categories;
+    in property <[string]> category-icons;
+    in property <string> category-title;
+    in property <[Cell]> cells;
+    in property <string> clock-date;
+    in property <string> clock-time;
+    in property <int> depth;
+    in property <string> error-message;
+    in property <string> key_back: "Escape";
+    in property <string> key_down: "DownArrow";
+    in property <string> key_left: "LeftArrow";
+    in property <string> key_menu: "Home";
+    in property <string> key_right: "RightArrow";
+    in property <string> key_select: "Return";
+    in property <string> key_up: "UpArrow";
+    in property <int> selected-category;
+    callback focus-category(int);
+    callback navigate(string);
+    callback pick-cell(int, int);
+    callback scroll-items(float);
+    callback select();
+
+    property <length> unit: root.height / 10;
+
+    forward-focus: menu;
+
+    menu := Xmb {
+        categories: root.categories;
+        category-icons: root.category-icons;
+        cells: root.cells;
+        depth: root.depth;
+        error-message: root.error-message;
+        height: root.height;
+        key_back: root.key_back;
+        key_down: root.key_down;
+        key_left: root.key_left;
+        key_menu: root.key_menu;
+        key_right: root.key_right;
+        key_select: root.key_select;
+        key_up: root.key_up;
+        selected-category: root.selected-category;
+        width: root.width;
+        focus-category(index) => { root.focus-category(index); }
+        navigate(command) => { root.navigate(command); }
+        pick-cell(column, index) => { root.pick-cell(column, index); }
+        scroll-items(delta) => { root.scroll-items(delta); }
+        select => { root.select(); }
+    }
+
+    HeaderDetails {
+        clock-date: root.clock-date;
+        clock-time: root.clock-time;
+        height: 2 * root.unit;
+        unit: root.unit;
+        width: root.width;
+    }
+
+    HeaderTitle {
+        height: 2 * root.unit;
+        label: root.category-title;
+        unit: root.unit;
+        width: root.width;
+    }
+}
