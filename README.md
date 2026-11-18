@@ -5,7 +5,7 @@ gamepad, and mouse controls. Rendering uses the Slint winit backend and FemtoVG.
 
 ## Structure
 
-- `ui/` contains the Slint window, cross menu, theme, and menu item.
+- `src/ui/` contains the Slint window, cross menu, theme, and menu item.
 - `src/config.rs` loads the bundled TOML defaults and optional user configuration.
 - `src/menu.rs` builds categories and menu actions from the configuration.
 - `src/navigation.rs` contains the small selection helper.
