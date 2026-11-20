@@ -1,0 +1,63 @@
+import { Theme } from "../theme.slint";
+
+export struct XmbMenuCategoryData {
+    glyph: string,
+    label: string,
+}
+
+export global XmbMenuCategorySettings {
+    in property <float> gap;
+    in property <float> selected_font_size;
+    in property <float> selected_icon_size;
+    in property <float> unselected_icon_size;
+    in property <float> unselected_opacity;
+}
+
+export component XmbMenuCategory inherits Rectangle {
+    in property <string> glyph;
+    in property <string> label;
+
+    in property <bool> is_selected;
+
+    height: root.is_selected ? max(icon.height, label.height) : icon.height;
+    width: root.is_selected 
+        ? icon.width + XmbMenuCategorySettings.gap * Theme.font_size + label.width
+        : icon.width;
+
+    icon := Text {
+        color: root.is_selected
+            ? Theme.foreground
+            : Theme.foreground.with-alpha(XmbMenuCategorySettings.unselected_opacity);
+        font-family: Theme.font_family;
+        font-size: root.is_selected
+            ? XmbMenuCategorySettings.selected_icon_size * Theme.font_size
+            : XmbMenuCategorySettings.unselected_icon_size * Theme.font_size;
+        text: root.glyph;
+
+        horizontal-alignment: center;
+        vertical-alignment: center;
+
+        height: self.preferred-height;
+        width: self.preferred-width;
+
+        x: 0px;
+        y: (parent.height - self.height) / 2;
+    }
+
+    label := Text {
+        color: Theme.foreground;
+        font-family: Theme.font_family;
+        font-size: XmbMenuCategorySettings.selected_font_size * Theme.font_size;
+        text: root.label;
+        visible: root.is_selected;
+
+        horizontal-alignment: left;
+        vertical-alignment: center;
+
+        height: self.preferred-height;
+        width: self.preferred-width;
+
+        x: icon.width + XmbMenuCategorySettings.gap * Theme.font_size;
+        y: (parent.height - self.height) / 2;
+    }
+}

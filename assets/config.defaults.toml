@@ -10,6 +10,20 @@ categories = []
 favorites = []
 icons = {}
 
+[ui.menu.categories]
+gap = 3.0
+selected_font_size = 2.0
+selected_icon_size = 5.0
+unselected_icon_size = 3.5
+unselected_opacity = 0.25
+
+[ui.menu.subcategories]
+font_size = 1.5
+gap = 0.5
+icon_size = 2.1
+selected_icon_size = 3.15
+unselected_opacity = 0.15
+
 [ui.clock]
 date_format = "%A, %-d of %B %Y"
 date_size = 1.25
@@ -17,8 +31,8 @@ float = "center"
 gap = 0.25
 time_format = "%H:%M"
 time_size = 7.5
-padding_left = 4
-padding_top = 4
+padding_left = 4.0
+padding_top = 4.0
 
 [commands]
 audio_mute = ["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"]
@@ -73,23 +87,12 @@ back_button_width_percent = 20.0
 category_center_percent = 50.0
 category_center_y_percent = 33.0
 category_gap_percent = 7.875
-category_icon_height_percent = 14.0
-category_icon_percent = 5.0
-category_icon_width_percent = 7.875
-category_selected_icon_percent = 6.0
 error_bottom_percent = 5.0
 error_font_percent = 1.5
 error_horizontal_padding_percent = 3.375
 item_column_offset_percent = 5.625
 item_column_width_percent = 25.3125
-item_font_percent = 1.5
-item_glyph_offset_percent = -2.8125
-item_glyph_percent = 2.1
-item_glyph_width_percent = 5.625
 item_height_percent = 3.0
-item_label_offset_percent = 2.8125
-item_selected_font_percent = 2.25
-item_selected_glyph_percent = 3.15
 item_selected_height_percent = 4.5
 item_selected_y_percent = 43.0
 item_positive_near_step_percent = 7.5
@@ -98,7 +101,5 @@ item_positive_far_step_percent = 5.0
 item_negative_near_step_percent = 20.0
 item_negative_far_top_percent = 23.0
 item_negative_far_step_percent = 5.0
-selection_line_percent = 0.15
-selection_line_offset_percent = 2.61
 vertical_offset_percent = 0.0
 viewport_top_percent = 33.0
