@@ -1,0 +1,82 @@
+import { Theme } from "../theme.slint";
+
+export struct XmbMenuSubcategoryData {
+    glyph: string,
+    label: string,
+}
+
+export global XmbMenuSubcategorySettings {
+    in property <float> gap;
+    in property <float> selected_font_size;
+    in property <float> selected_icon_size;
+    in property <float> underline_gap;
+    in property <float> underline_thickness;
+    in property <float> unselected_font_size;
+    in property <float> unselected_icon_size;
+    in property <float> unselected_opacity;
+}
+
+export component XmbMenuSubcategory inherits Rectangle {
+    in property <string> glyph;
+    in property <string> label;
+
+    in property <bool> is_selected;
+
+    height: root.is_selected
+        ? max(
+            icon.height,
+            label.height
+                + 2 * (XmbMenuSubcategorySettings.underline_gap + XmbMenuSubcategorySettings.underline_thickness)
+                    * Theme.font_size
+        )
+        : max(icon.height, label.height);
+    width: icon.width + XmbMenuSubcategorySettings.gap * Theme.font_size + label.width;
+
+    icon := Text {
+        color: root.is_selected
+            ? Theme.foreground
+            : Theme.foreground.with-alpha(XmbMenuSubcategorySettings.unselected_opacity);
+        font-family: Theme.font_family;
+        font-size: root.is_selected
+            ? XmbMenuSubcategorySettings.selected_icon_size * Theme.font_size
+            : XmbMenuSubcategorySettings.unselected_icon_size * Theme.font_size;
+        text: root.glyph;
+
+        horizontal-alignment: center;
+        vertical-alignment: center;
+
+        height: self.preferred-height;
+        width: self.preferred-width;
+
+        x: 0px;
+        y: (parent.height - self.height) / 2;
+    }
+
+    label := Text {
+        color: root.is_selected
+            ? Theme.foreground
+            : Theme.foreground.with-alpha(XmbMenuSubcategorySettings.unselected_opacity);
+        font-family: Theme.font_family;
+        font-size: root.is_selected
+            ? XmbMenuSubcategorySettings.selected_font_size * Theme.font_size
+            : XmbMenuSubcategorySettings.unselected_font_size * Theme.font_size;
+        text: root.label;
+
+        height: self.preferred-height;
+        width: self.preferred-width;
+
+        x: icon.width + XmbMenuSubcategorySettings.gap * Theme.font_size;
+        y: (parent.height - self.height) / 2;
+    }
+
+    underline := Rectangle {
+        background: Theme.foreground;
+        visible: root.is_selected;
+
+        height: max(1px, XmbMenuSubcategorySettings.underline_thickness * Theme.font_size);
+        width: label.width;
+
+        x: label.x;
+        y: label.y + label.height + XmbMenuSubcategorySettings.underline_gap * Theme.font_size;
+    }
+}
