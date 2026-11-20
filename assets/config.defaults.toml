@@ -18,11 +18,14 @@ unselected_icon_size = 3.5
 unselected_opacity = 0.25
 
 [ui.menu.subcategories]
-font_size = 1.5
-gap = 0.5
-icon_size = 2.1
-selected_icon_size = 3.15
-unselected_opacity = 0.15
+gap = 1.0
+selected_font_size = 1.5
+selected_icon_size = 3.0
+underline_gap = 0.25
+underline_thickness = 0.1
+unselected_font_size = 1.0
+unselected_icon_size = 2.0
+unselected_opacity = 0.25
 
 [ui.clock]
 date_format = "%A, %-d of %B %Y"

@@ -1,0 +1,81 @@
+import { Theme } from "../theme.slint";
+
+export global MenuSubcategorySettings {
+    in property <float> gap;
+    in property <float> selected_font_size;
+    in property <float> selected_icon_size;
+    in property <float> underline_gap;
+    in property <float> underline_thickness;
+    in property <float> unselected_font_size;
+    in property <float> unselected_icon_size;
+    in property <float> unselected_opacity;
+}
+
+export component XmbMenuSubcategory inherits Rectangle {
+    in property <string> glyph;
+    in property <string> label;
+
+    in property <bool> selected;
+
+    in property <length> viewport_height;
+    in property <length> viewport_width;
+
+    in property <color> text_color: Theme.foreground;
+
+    measure := Text {
+        font-family: Theme.font_family;
+        font-size: root.viewport_height
+            * max(MenuSubcategorySettings.unselected_icon_size, MenuSubcategorySettings.selected_icon_size) / 100;
+        opacity: 0;
+        text: root.glyph;
+    }
+
+    height: measure.preferred-height;
+    width: measure.preferred-width;
+
+    glyph_text := Text {
+        color: root.selected ? root.text_color : root.text_color.with-alpha(MenuSubcategorySettings.unselected_opacity);
+        font-family: Theme.font_family;
+        font-size: root.viewport_height
+            * (root.selected ? MenuSubcategorySettings.selected_icon_size : MenuSubcategorySettings.unselected_icon_size)
+            / 100;
+        text: root.glyph;
+
+        horizontal-alignment: center;
+        vertical-alignment: center;
+
+        height: self.preferred-height;
+        width: measure.preferred-width;
+
+        x: 0px;
+        y: (parent.height - self.height) / 2;
+    }
+
+    label_text := Text {
+        color: root.selected ? root.text_color : root.text_color.with-alpha(MenuSubcategorySettings.unselected_opacity);
+        font-family: Theme.font_family;
+        font-size: (root.selected
+            ? MenuSubcategorySettings.selected_font_size
+            : MenuSubcategorySettings.unselected_font_size) * Theme.font_size;
+        overflow: elide;
+        text: root.label;
+
+        vertical-alignment: center;
+
+        height: parent.height;
+        width: max(0px, parent.width - self.x);
+
+        x: glyph_text.width + MenuSubcategorySettings.gap * Theme.font_size;
+    }
+
+    if root.selected: Rectangle {
+        background: root.text_color;
+
+        height: max(1px, MenuSubcategorySettings.underline_thickness * Theme.font_size);
+        width: min(label_text.preferred-width, label_text.width);
+
+        x: label_text.x;
+        y: (label_text.height + label_text.preferred-height) / 2
+            + MenuSubcategorySettings.underline_gap * Theme.font_size;
+    }
+}
