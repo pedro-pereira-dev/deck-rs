@@ -1,40 +1,19 @@
 import { Theme } from "../theme.slint";
-import { Clock } from "../components/clock.slint";
+import { Clock, ClockSettings } from "../components/clock.slint";
 
 export component MainView inherits Rectangle {
-    in property <string> clock-date;
-    in property <string> clock-time;
-    in property <color> clock-date-color: #999999;
-    in property <float> clock-date-font-percent: 1.8;
-    in property <float> clock-box-height-percent: 0.0;
-    in property <float> clock-box-width-percent: 100.0;
-    in property <string> clock-font-family: "sans-serif";
-    in property <string> clock-horizontal-alignment: "center";
-    in property <float> clock-horizontal-padding-percent: 3.375;
-    in property <float> clock-line-spacing-percent: 3.0;
-    in property <color> clock-text-color: #ffffff;
-    in property <float> clock-time-font-percent: 11.25;
-    in property <float> clock-top-offset-percent: 3.0;
-    in property <string> clock-vertical-alignment: "top";
-
     background: Theme.background;
 
     Clock {
-        date: root.clock-date;
-        date-color: root.clock-date-color;
-        date-font-size: root.height * root.clock-date-font-percent / 100;
-        box-height: root.height * root.clock-box-height-percent / 100;
-        box-width-percent: root.clock-box-width-percent;
-        font-family: root.clock-font-family;
+        date_size: ClockSettings.date_size;
+        float: ClockSettings.float;
+        gap: ClockSettings.gap;
+        time_size: ClockSettings.time_size;
+
         height: root.height;
-        horizontal-alignment: root.clock-horizontal-alignment;
-        horizontal-padding: root.width * root.clock-horizontal-padding-percent / 100;
-        line-spacing: root.height * root.clock-line-spacing-percent / 100;
-        text-color: root.clock-text-color;
-        time: root.clock-time;
-        time-font-size: root.height * root.clock-time-font-percent / 100;
-        top-offset: root.height * root.clock-top-offset-percent / 100;
-        vertical-alignment: root.clock-vertical-alignment;
         width: root.width;
+
+        x: 0px;
+        y: 0px;
     }
 }

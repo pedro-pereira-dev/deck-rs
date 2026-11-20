@@ -1,70 +1,104 @@
 import { Theme } from "../theme.slint";
 
-export component Clock inherits Rectangle {
+export global ClockState {
     in property <string> date;
     in property <string> time;
-    in property <color> date-color: root.text-color.with-alpha(0.6);
-    in property <length> date-font-size: 1.8 * root.height / 100;
-    in property <length> box-height;
-    in property <float> box-width-percent: 100.0;
-    in property <string> font-family: "sans-serif";
-    in property <string> horizontal-alignment: "center";
-    in property <length> horizontal-padding: 3.375 * root.width / 100;
-    in property <length> line-spacing: 3 * root.height / 100;
-    in property <color> text-color: Theme.text;
-    in property <length> time-font-size: 11.25 * root.height / 100;
-    in property <length> top-offset: 3 * root.height / 100;
-    in property <string> vertical-alignment: "top";
+}
 
-    property <length> content-height: root.time-font-size + root.line-spacing + root.date-font-size;
-    property <length> content-box-height: root.box-height > 0px ? root.box-height : root.content-height;
-    property <length> content-box-width: min(
-        root.width - 2 * root.horizontal-padding,
-        root.width * root.box-width-percent / 100
-    );
-    property <length> content-y: root.vertical-alignment == "bottom"
-        ? root.height - root.content-box-height - root.top-offset
-        : root.vertical-alignment == "center"
-        ? (root.height - root.content-box-height) / 2 + root.top-offset
-        : root.top-offset;
+export global ClockSettings {
+    in property <float> date_size;
+    in property <float> gap;
+    in property <float> time_size;
+    in property <string> float;
 
-    content-box := Rectangle {
+    in property <float> bottom;
+    in property <float> left;
+    in property <float> right;
+    in property <float> top;
+
+    in property <float> padding_bottom;
+    in property <float> padding_left;
+    in property <float> padding_right;
+    in property <float> padding_top;
+}
+
+export component Clock inherits Rectangle {
+    in property <float> date_size;
+    in property <float> gap;
+    in property <float> time_size;
+    in property <string> float;
+
+    property <length> em: Theme.font_size;
+
+    property <length> date_font_size: root.em * root.date_size;
+    property <length> gap_size: root.gap * root.em;
+    property <length> time_font_size: root.em * root.time_size;
+
+    property <length> padding_bottom_size: ClockSettings.padding_bottom * root.em;
+    property <length> padding_left_size: ClockSettings.padding_left * root.em;
+    property <length> padding_right_size: ClockSettings.padding_right * root.em;
+    property <length> padding_top_size: ClockSettings.padding_top * root.em;
+
+    out property <length> content_height: root.time_font_size + root.gap_size + root.date_font_size
+        + root.padding_top_size + root.padding_bottom_size;
+    out property <length> content_width: Math.max(time_text.preferred-width, date_text.preferred-width)
+        + root.padding_left_size + root.padding_right_size;
+
+    property <length> clock_height: ClockSettings.top >= 0 && ClockSettings.bottom >= 0
+        ? root.height * (100 - ClockSettings.top - ClockSettings.bottom) / 100
+        : root.content_height;
+    property <length> clock_width: ClockSettings.left >= 0 && ClockSettings.right >= 0
+        ? root.width * (100 - ClockSettings.left - ClockSettings.right) / 100
+        : root.content_width;
+
+    box := Rectangle {
         background: transparent;
         clip: true;
-        height: root.content-box-height;
-        width: root.content-box-width;
-        x: root.horizontal-alignment == "left"
-            ? root.horizontal-padding
-            : root.horizontal-alignment == "right"
-            ? root.width - root.horizontal-padding - self.width
-            : (root.width - self.width) / 2;
-        y: root.content-y;
 
-        Text {
-            color: root.text-color;
-            font-family: root.font-family;
-            font-size: root.time-font-size;
-            horizontal-alignment: root.horizontal-alignment == "left"
-                ? left
-                : root.horizontal-alignment == "right" ? right : center;
-            height: root.time-font-size;
-            text: root.time;
+        height: root.clock_height;
+        width: root.clock_width;
+
+        x: ClockSettings.left >= 0
+            ? root.width * ClockSettings.left / 100
+            : ClockSettings.right >= 0
+            ? root.width * (100 - ClockSettings.right) / 100 - self.width
+            : 0px;
+        y: ClockSettings.top >= 0
+            ? root.height * ClockSettings.top / 100
+            : ClockSettings.bottom >= 0
+            ? root.height * (100 - ClockSettings.bottom) / 100 - self.height
+            : 0px;
+
+        time_text := Text {
+            color: Theme.foreground;
+            font-family: Theme.font_family;
+            font-size: root.time_font_size;
+            text: ClockState.time;
+
+            horizontal-alignment: root.float == "left" ? left : root.float == "right" ? right : center;
             vertical-alignment: center;
-            width: parent.width;
+
+            height: root.time_font_size;
+            width: parent.width - root.padding_left_size - root.padding_right_size;
+
+            x: root.padding_left_size;
+            y: root.padding_top_size;
         }
 
-        Text {
-            color: root.date-color;
-            font-family: root.font-family;
-            font-size: root.date-font-size;
-            horizontal-alignment: root.horizontal-alignment == "left"
-                ? left
-                : root.horizontal-alignment == "right" ? right : center;
-            height: root.date-font-size;
-            text: root.date;
+        date_text := Text {
+            color: Theme.foreground.with-alpha(0.6);
+            font-family: Theme.font_family;
+            font-size: root.date_font_size;
+            text: ClockState.date;
+
+            horizontal-alignment: root.float == "left" ? left : root.float == "right" ? right : center;
             vertical-alignment: center;
-            width: parent.width;
-            y: root.time-font-size + root.line-spacing;
+
+            height: root.date_font_size;
+            width: parent.width - root.padding_left_size - root.padding_right_size;
+
+            x: root.padding_left_size;
+            y: root.padding_top_size + root.time_font_size + root.gap_size;
         }
     }
 }

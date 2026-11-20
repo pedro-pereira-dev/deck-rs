@@ -1,3 +1,25 @@
+[ui]
+animation_speed = 180
+background = "#000000"
+background_image = ""
+font_family = "Symbols Nerd Font Mono"
+font_size = 16.0
+foreground = "#ffffff"
+# application entries
+categories = []
+favorites = []
+icons = {}
+
+[ui.clock]
+date_format = "%A, %-d of %B %Y"
+date_size = 1.25
+float = "center"
+gap = 0.25
+time_format = "%H:%M"
+time_size = 7.5
+padding_left = 4
+padding_top = 4
+
 [commands]
 audio_mute = ["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"]
 audio_volume_down = ["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%-"]
@@ -40,30 +62,12 @@ right = "RightArrow"
 select = "Enter"
 up = "UpArrow"
 
-[ui]
-animation_ms = 180
-background = "#000000"
-background_image = ""
-categories = []
-favorites = []
-font_family = "Symbols Nerd Font Mono"
-icons = {}
-text = "#ffffff"
-
 [ui.example]
 back_button_font_percent = 3.5
 back_button_height_percent = 8.0
 back_button_left_percent = 40.0
 back_button_top_percent = 46.0
 back_button_width_percent = 20.0
-
-[ui.header]
-category_font_percent = 6.5
-date_font_percent = 1.8
-date_top_percent = 17.25
-left_padding_percent = 3.375
-time_font_percent = 11.25
-top_percent = 3.0
 
 [ui.xmb]
 category_center_percent = 50.0
@@ -98,19 +102,3 @@ selection_line_percent = 0.15
 selection_line_offset_percent = 2.61
 vertical_offset_percent = 0.0
 viewport_top_percent = 33.0
-
-[ui.clock]
-box_height_percent = 0.0
-box_width_percent = 100.0
-date_color = "#999999"
-date_font_percent = 1.8
-date_format = "%A, %-d of %B %Y"
-font_family = "sans-serif"
-format = "%H:%M"
-horizontal_alignment = "center"
-horizontal_padding_percent = 3.375
-line_spacing_percent = 3.0
-text_color = "#ffffff"
-time_font_percent = 11.25
-top_offset_percent = 3.0
-vertical_alignment = "top"
