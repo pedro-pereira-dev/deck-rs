@@ -1,0 +1,63 @@
+import { Theme } from "../theme.slint";
+
+export global MenuCategorySettings {
+    in property <float> gap;
+    in property <float> selected_font_size;
+    in property <float> selected_icon_size;
+    in property <float> unselected_icon_size;
+    in property <float> unselected_opacity;
+}
+
+export component XmbMenuCategory inherits Rectangle {
+    in property <string> glyph;
+    in property <string> label;
+
+    in property <bool> selected;
+
+    in property <length> viewport_height;
+    in property <length> viewport_width;
+
+    in property <color> text_color: Theme.foreground;
+
+    measure := Text {
+        font-family: Theme.font_family;
+        font-size: root.viewport_height
+            * max(MenuCategorySettings.unselected_icon_size, MenuCategorySettings.selected_icon_size) / 100;
+        opacity: 0;
+        text: root.glyph;
+    }
+
+    height: measure.preferred-height;
+    width: measure.preferred-width;
+
+    Text {
+        color: root.selected ? root.text_color : root.text_color.with-alpha(MenuCategorySettings.unselected_opacity);
+        font-family: Theme.font_family;
+        font-size: root.viewport_height
+            * (root.selected ? MenuCategorySettings.selected_icon_size : MenuCategorySettings.unselected_icon_size)
+            / 100;
+        text: root.glyph;
+
+        horizontal-alignment: center;
+        vertical-alignment: center;
+
+        height: parent.height;
+        width: parent.width;
+    }
+
+    Text {
+        color: Theme.foreground;
+        font-family: Theme.font_family;
+        font-size: MenuCategorySettings.selected_font_size * Theme.font_size;
+        text: root.label;
+        visible: root.selected;
+
+        horizontal-alignment: left;
+        vertical-alignment: center;
+
+        height: parent.height;
+        width: max(0px, root.viewport_width - root.width - MenuCategorySettings.gap * Theme.font_size);
+
+        x: root.width + MenuCategorySettings.gap * Theme.font_size;
+    }
+}
