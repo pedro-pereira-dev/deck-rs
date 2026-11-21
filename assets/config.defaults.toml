@@ -10,6 +10,11 @@ categories = []
 favorites = []
 icons = {}
 
+[ui.menu.column]
+category_gap = 4.0
+subcategory_gap = 3.0
+subcategory_padding_left = 0.0
+
 [ui.menu.categories]
 gap = 3.0
 selected_font_size = 2.0

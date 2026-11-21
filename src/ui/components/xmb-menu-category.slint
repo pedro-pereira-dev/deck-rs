@@ -34,9 +34,6 @@ export component XmbMenuCategory inherits Rectangle {
             : XmbMenuCategorySettings.unselected_icon_size * Theme.font_size;
         text: root.glyph;
 
-        horizontal-alignment: center;
-        vertical-alignment: center;
-
         height: self.preferred-height;
         width: self.preferred-width;
 
@@ -50,9 +47,6 @@ export component XmbMenuCategory inherits Rectangle {
         font-size: XmbMenuCategorySettings.selected_font_size * Theme.font_size;
         text: root.label;
         visible: root.is_selected;
-
-        horizontal-alignment: left;
-        vertical-alignment: center;
 
         height: self.preferred-height;
         width: self.preferred-width;

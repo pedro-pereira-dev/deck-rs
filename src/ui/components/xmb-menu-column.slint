@@ -1,0 +1,80 @@
+import { Theme } from "../theme.slint";
+import { XmbMenuCategoryData, XmbMenuCategory } from "xmb-menu-category.slint";
+import { XmbMenuSubcategoryData, XmbMenuSubcategory } from "xmb-menu-subcategory.slint";
+
+export struct XmbMenuColumnData {
+    category: XmbMenuCategoryData,
+    subcategories: [XmbMenuSubcategoryData],
+}
+
+export global XmbMenuColumnSettings {
+    in property <float> category_gap;
+    in property <float> subcategory_gap;
+    in property <float> subcategory_padding_left;
+}
+
+export component XmbMenuColumn inherits Rectangle {
+    in property <XmbMenuCategoryData> category;
+    in property <[XmbMenuSubcategoryData]> subcategories;
+
+    in property <bool> is_selected;
+    in property <int> selected_subcategory;
+    in property <length> drag_offset;
+
+    width: root.is_selected ? measure.preferred-width : category_probe.preferred-width;
+
+    measure := VerticalLayout {
+        opacity: 0;
+        padding-left: XmbMenuColumnSettings.subcategory_padding_left * Theme.font_size;
+
+        category_probe := XmbMenuCategory {
+            glyph: root.category.glyph;
+            label: root.category.label;
+            is_selected: true;
+        }
+        for subcategory in root.subcategories: subcategory_probe := XmbMenuSubcategory {
+            glyph: subcategory.glyph;
+            label: subcategory.label;
+            is_selected: true;
+        }
+    }
+
+    XmbMenuCategory {
+        glyph: root.category.glyph;
+        label: root.category.label;
+
+        is_selected: root.is_selected;
+
+        y: root.height / 2 - XmbMenuColumnSettings.category_gap * Theme.font_size - self.height / 2;
+    }
+
+    for subcategory[index] in root.subcategories: slot := Rectangle {
+        property <bool> is_selected: root.is_selected && index == root.selected_subcategory;
+
+        property <float> offset: index - root.selected_subcategory
+            + root.drag_offset / (XmbMenuColumnSettings.subcategory_gap * Theme.font_size);
+
+        visible: root.is_selected;
+
+        height: item.height;
+        width: root.width;
+
+        y: root.height / 2 + slot.offset * XmbMenuColumnSettings.subcategory_gap * Theme.font_size
+            + (slot.offset < 0 ? XmbMenuColumnSettings.subcategory_gap * Theme.font_size
+                - 2 * XmbMenuColumnSettings.category_gap * Theme.font_size : 0px)
+            - self.height / 2;
+
+        animate y { duration: Theme.animation_speed; easing: ease-out; }
+
+        item := XmbMenuSubcategory {
+            glyph: subcategory.glyph;
+            label: subcategory.label;
+
+            is_selected: slot.is_selected;
+
+            x: XmbMenuColumnSettings.subcategory_padding_left * Theme.font_size;
+
+            width: root.width - self.x;
+        }
+    }
+}
